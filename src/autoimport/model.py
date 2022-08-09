@@ -4,7 +4,10 @@ import importlib.util
 import inspect
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+import pkgutil
+from importlib import import_module
+from types import ModuleType
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import autoflake
 from pyflakes.messages import UndefinedExport, UndefinedName, UnusedImport
@@ -505,6 +508,25 @@ class SourceCode:  # noqa: R090
                 return
 
 
+def import_submodules(module: ModuleType) -> Set[ModuleType]:
+    """
+    Import all modules from the specified root package and its subpackages recursively.
+    """
+    imported: Set[ModuleType] = set()
+    if not hasattr(module, "__path__"):
+        if hasattr(module, "__file__"):
+            return {module}
+        raise ValueError(f"Cannot find submodules of module {module}")
+
+    for _, mod_name, ispkg in pkgutil.iter_modules(module.__path__):
+        submodule = import_module(".".join((module.__name__, mod_name)))
+        imported.add(submodule)
+        if ispkg:
+            imported.update(import_submodules(submodule))
+
+    return imported
+
+
 def extract_package_objects(name: str) -> Dict[str, str]:
     """Extract the package objects and their import string.
 
@@ -516,16 +538,12 @@ def extract_package_objects(name: str) -> Dict[str, str]:
 
     # Get the modules of the desired package
     try:
-        package_modules = [__import__(name)]
+        root_module = importlib.import_module(name)
 
     except ModuleNotFoundError:
         return package_objects
-    package_modules.extend(
-        [
-            module[1]
-            for module in inspect.getmembers(package_modules[0], inspect.ismodule)
-        ]
-    )
+
+    package_modules = list(import_submodules(root_module))
 
     # Get objects of the package
     for module in package_modules:
