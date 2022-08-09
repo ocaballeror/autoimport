@@ -13,6 +13,7 @@ import autoflake
 from pyflakes.messages import UndefinedExport, UndefinedName, UnusedImport
 from pyprojroot import here
 
+common_libraries = "typing", "common", "bodex"
 common_statements: Dict[str, str] = {
     "ABC": "from abc import ABC",
     "BaseModel": "from pydantic import BaseModel  # noqa: E0611",
@@ -340,7 +341,7 @@ class SourceCode:  # noqa: R090
         for check in [
             "_find_package_in_common_statements",
             "_find_package_in_modules",
-            "_find_package_in_typing",
+            "_find_package_in_libraries",
             "_find_package_in_our_project",
         ]:
             package = getattr(self, check)(name)
@@ -404,7 +405,7 @@ class SourceCode:  # noqa: R090
         return f"import {name}"
 
     @staticmethod
-    def _find_package_in_typing(name: str) -> Optional[str]:
+    def _find_package_in_libraries(name: str) -> Optional[str]:
         """Search in the typing library the object name.
 
         Args:
@@ -413,12 +414,12 @@ class SourceCode:  # noqa: R090
         Returns:
             import_string: Python 3.7 type checking compatible import string.
         """
-        typing_objects = extract_package_objects("typing")
+        for lib in common_libraries:
+            objects = extract_package_objects(lib)
+            if name in objects:
+                return objects[name]
 
-        try:
-            return typing_objects[name]
-        except KeyError:
-            return None
+        return None
 
     def _get_disable_move_to_top(self) -> bool:
         """Fetch the disable_move_to_top configuration value."""
