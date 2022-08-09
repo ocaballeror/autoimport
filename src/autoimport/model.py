@@ -349,7 +349,16 @@ class SourceCode:  # noqa: R090
         return None
 
     @staticmethod
-    def _find_package_in_our_project(name: str) -> Optional[str]:
+    def _find_project_packages() -> List[str]:
+        return [
+            path.name
+            for path in here().iterdir()
+            if path.is_dir()
+            and path.name != "tests"
+            and (path / "__init__.py").exists()
+        ]
+
+    def _find_package_in_our_project(self, name: str) -> Optional[str]:
         """Search the name in the objects of the package we are developing.
 
         Args:
@@ -358,15 +367,9 @@ class SourceCode:  # noqa: R090
         Returns:
             import_string: String required to import the package.
         """
-        # Find the package name
-        try:
-            project_package = os.path.basename(here()).replace("-", "_")
-        except RuntimeError:  # pragma: no cover
-            # I don't know how to make a test that raises it :(
-            # To manually reproduce, follow the steps of
-            # https://github.com/lyz-code/autoimport/issues/131
-            return None
-        package_objects = extract_package_objects(project_package)
+        package_objects = {}
+        for package in self._find_project_packages():
+            package_objects.update(extract_package_objects(package))
 
         # nocover: as the tests are run inside the autoimport virtualenv, it will
         # always find the objects on that package
