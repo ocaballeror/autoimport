@@ -558,9 +558,5 @@ def extract_package_objects(name: str) -> Dict[str, str]:
                 package_objects[
                     object_name
                 ] = f"from {package_object.__module__} import {object_name}"
-            else:
-                package_objects[
-                    object_name
-                ] = f"from {module.__name__} import {object_name}"
 
     return package_objects
