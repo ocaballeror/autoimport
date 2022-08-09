@@ -1,8 +1,8 @@
 """Define the entities."""
 
+import sys
 import importlib.util
 import inspect
-import os
 import re
 import pkgutil
 from importlib import import_module
@@ -368,6 +368,10 @@ class SourceCode:  # noqa: R090
             import_string: String required to import the package.
         """
         package_objects = {}
+
+        if str(here()) not in sys.path:
+            sys.path.append(str(here()))
+
         for package in self._find_project_packages():
             package_objects.update(extract_package_objects(package))
 
