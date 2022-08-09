@@ -550,29 +550,17 @@ def extract_package_objects(name: str) -> Dict[str, str]:
 
     # Get objects of the package
     for module in package_modules:
-        for package_object_tuple in inspect.getmembers(module):
-            object_name = package_object_tuple[0]
-            package_object = package_object_tuple[1]
-            # If the object is a function or a class
-            if inspect.isfunction(package_object) or inspect.isclass(package_object):
-                if (
-                    object_name not in package_objects
-                    and name in package_object.__module__
-                ):
-                    # Try to load the object from the module instead of the
-                    # submodules.
-                    if hasattr(module, "__all__") and object_name in module.__all__:
-                        package_objects[
-                            object_name
-                        ] = f"from {module.__name__} import {object_name}"
-                    else:
-                        package_objects[
-                            object_name
-                        ] = f"from {package_object.__module__} import {object_name}"
+        for object_name, package_object in inspect.getmembers(module):
+            if object_name.startswith("_") or object_name in package_objects:
+                continue
 
-            elif not re.match(r"^_.*", object_name):
-                # The rest of objects
+            if hasattr(package_object, "__module__"):
+                package_objects[
+                    object_name
+                ] = f"from {package_object.__module__} import {object_name}"
+            else:
                 package_objects[
                     object_name
                 ] = f"from {module.__name__} import {object_name}"
+
     return package_objects
