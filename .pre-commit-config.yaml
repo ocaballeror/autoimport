@@ -20,6 +20,7 @@ repos:
         id: mypy
         args: [--no-warn-unused-ignores, --ignore-missing-imports]
         files: src
+        additional_dependencies: [pydantic]
   # - repo: https://github.com/flakehell/flakehell/
   #   rev: v.0.8.0
   #   hooks:
