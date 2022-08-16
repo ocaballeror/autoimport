@@ -521,7 +521,11 @@ def import_submodules(module: ModuleType) -> Set[ModuleType]:
         raise ValueError(f"Cannot find submodules of module {module}")
 
     for _, mod_name, ispkg in pkgutil.iter_modules(module.__path__):
-        submodule = import_module(".".join((module.__name__, mod_name)))
+        try:
+            submodule = import_module(".".join((module.__name__, mod_name)))
+        except Exception:
+            continue
+
         imported.add(submodule)
         if ispkg:
             imported.update(import_submodules(submodule))
