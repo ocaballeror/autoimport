@@ -4,6 +4,8 @@ Classes and functions that connect the different domain model objects with the a
 and handlers to achieve the program's purpose.
 """
 
+import shutil
+import subprocess
 from typing import Any, Dict, Optional, Tuple
 
 from _io import TextIOWrapper
@@ -15,7 +17,7 @@ def fix_files(
     files: Tuple[TextIOWrapper, ...],
     config: Optional[Dict[str, Any]] = None,
     keep_unused_imports: bool = False,
-) -> Optional[str]:
+) -> None:
     """Fix the python source code of a list of files.
 
     If the input is taken from stdin, it will output the value to stdout.
@@ -33,28 +35,10 @@ def fix_files(
         if fixed_source == source and file_wrapper.name != "<stdin>":
             continue
 
-        try:
-            # Click testing runner doesn't simulate correctly the reading from stdin
-            # instead of setting the name attribute to `<stdin>` it gives an
-            # AttributeError. But when you use it outside testing, no AttributeError
-            # is raised and name has the value <stdin>. So there is no way of testing
-            # this behaviour.
-            if file_wrapper.name == "<stdin>":  # pragma no cover
-                output = "output"
-            else:
-                output = "file"
-        except AttributeError:
-            output = "output"
-
-        if output == "file":
-            file_wrapper.seek(0)
-            file_wrapper.write(fixed_source)
-            file_wrapper.truncate()
-            file_wrapper.close()
-        else:
-            return fixed_source
-
-    return None
+        file_wrapper.seek(0)
+        file_wrapper.write(fixed_source)
+        file_wrapper.truncate()
+        file_wrapper.close()
 
 
 def fix_code(
