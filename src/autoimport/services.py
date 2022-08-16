@@ -13,6 +13,11 @@ from _io import TextIOWrapper
 from autoimport.model import SourceCode
 
 
+def isort(files: Tuple[TextIOWrapper, ...]) -> None:
+    if shutil.which("isort"):
+        subprocess.run(["isort", *(f.name for f in files)])
+
+
 def fix_files(
     files: Tuple[TextIOWrapper, ...], config: Optional[Dict[str, Any]] = None
 ) -> None:
@@ -37,6 +42,8 @@ def fix_files(
         file_wrapper.write(fixed_source)
         file_wrapper.truncate()
         file_wrapper.close()
+
+    isort(files)
 
 
 def fix_code(original_source_code: str, config: Optional[Dict[str, Any]] = None) -> str:
