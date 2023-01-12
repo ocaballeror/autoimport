@@ -16,7 +16,9 @@ from pyprojroot import here
 common_libraries = "typing", "common", "bodex"
 common_statements: Dict[str, str] = {
     "ABC": "from abc import ABC",
-    "BaseModel": "from pydantic import BaseModel  # noqa: E0611",
+    "BaseModel": "from pydantic import BaseModel",
+    "Field": "from pydantic import Field",
+    "ValidationError": "from pydantic import ValidationError",
     "BeautifulSoup": "from bs4 import BeautifulSoup",
     "Enum": "from enum import Enum",
     "MagicMock": "from unittest.mock import MagicMock",
@@ -24,13 +26,13 @@ common_statements: Dict[str, str] = {
     "StringIO": "from io import StringIO",
     "YAMLError": "from yaml import YAMLError",
     "abstractmethod": "from abc import abstractmethod",
-    "call": "from unittest.mock import call",
     "config": "from decouple import config",
     "datetime": "from datetime import datetime",
     "logger": "from loguru import logger",
     "patch": "from unittest.mock import patch",
     "suppress": "from contextlib import suppress",
     "timedelta": "from datetime import datetime",
+    "timezone": "from datetime import timezone",
     "tz": "from dateutil import tz",
 }
 
