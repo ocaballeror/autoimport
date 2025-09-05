@@ -262,7 +262,7 @@ class SourceCode:  # noqa: R090
             if (
                 "=" not in line
                 and not multiline_string
-                and re.match(r"^\s*(?:from .*)?import .[^\'\"]*$", line)
+                and re.match(r"^(?:from .*)?import .[^\'\"]*$", line)
             ) or multiline_import:
                 if self._should_ignore_line(line):
                     continue
