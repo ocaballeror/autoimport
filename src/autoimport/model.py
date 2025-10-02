@@ -6,6 +6,7 @@ import inspect
 import re
 import pkgutil
 from importlib import import_module
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -351,14 +352,18 @@ class SourceCode:  # noqa: R090
                 return package
         return None
 
-    @staticmethod
-    def _find_project_packages() -> List[str]:
+    def _find_project_packages(self, where: Optional[Path] = None) -> List[str]:
+        if not where:
+            where = here()
+
+        src = where / "src"
+        if src.is_dir():
+            return self._find_project_packages(src)
+
         return [
             path.name
-            for path in here().iterdir()
-            if path.is_dir()
-            and path.name != "tests"
-            and (path / "__init__.py").exists()
+            for path in where.iterdir()
+            if path.is_dir() and path.name != "tests" and (path / "__init__.py").exists()
         ]
 
     def _find_package_in_our_project(self, name: str) -> Optional[str]:
