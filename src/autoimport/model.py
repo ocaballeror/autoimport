@@ -13,7 +13,7 @@ import autoflake
 from pyflakes.messages import UndefinedExport, UndefinedName, UnusedImport
 from pyprojroot import here
 
-common_libraries = "typing", "common", "bodex"
+common_libraries = ("typing",)
 common_statements: Dict[str, str] = {
     "ABC": "from abc import ABC",
     "BaseModel": "from pydantic import BaseModel",
