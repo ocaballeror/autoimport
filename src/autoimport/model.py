@@ -140,9 +140,7 @@ class SourceCode:  # noqa: R090
             if re.match(r"^(try|except.*):$", line):
                 try_line = line
             elif (
-                re.match(r"^\s*(from .*)?import.[^\'\"]*$", line)
-                or line == ""
-                or multiline_import
+                re.match(r"^\s*(from .*)?import.[^\'\"]*$", line) or line == "" or multiline_import
             ):
                 # Process multiline import statements
                 if "(" in line:
@@ -212,9 +210,7 @@ class SourceCode:  # noqa: R090
 
         return source_code
 
-    def _append_section(
-        self, source_code: str, section_name: str, empty_lines: int = 1
-    ) -> str:
+    def _append_section(self, source_code: str, section_name: str, empty_lines: int = 1) -> str:
         """Append a section to the existent source code.
 
         Args:
@@ -234,12 +230,10 @@ class SourceCode:  # noqa: R090
     @staticmethod
     def _should_ignore_line(line: str) -> bool:
         """Determine whether a line should be ignored by autoimport or not."""
-        return any(
-            [
-                re.match(r".*?# ?fmt:.*?skip.*", line),
-                re.match(r".*?# ?noqa:.*?autoimport.*", line),
-            ]
-        )
+        return any([
+            re.match(r".*?# ?fmt:.*?skip.*", line),
+            re.match(r".*?# ?noqa:.*?autoimport.*", line),
+        ])
 
     def _move_imports_to_top(self) -> None:
         """Fix python source code to move import statements to the top of the file.
@@ -435,11 +429,7 @@ class SourceCode:  # noqa: R090
         disable_move_to_top = self.config.get("disable_move_to_top")
         if disable_move_to_top is not None:
             return disable_move_to_top
-        return (
-            self.config.get("tool", {})
-            .get("autoimport", {})
-            .get("disable_move_to_top", False)
-        )
+        return self.config.get("tool", {}).get("autoimport", {}).get("disable_move_to_top", False)
 
     def _get_additional_statements(self) -> Dict[str, str]:
         """Fetch the common_statements configuration value."""
@@ -447,9 +437,7 @@ class SourceCode:  # noqa: R090
         config_statements = self.config.get("common_statements")
         if config_statements:
             return config_statements
-        return (
-            self.config.get("tool", {}).get("autoimport", {}).get("common_statements")
-        )
+        return self.config.get("tool", {}).get("autoimport", {}).get("common_statements")
 
     def _find_package_in_common_statements(self, name: str) -> Optional[str]:
         """Search in the common statements the object name.
@@ -504,13 +492,11 @@ class SourceCode:  # noqa: R090
                 # fmt: on
                 if match is not None:
                     line_number = self.imports.index(line)
-                    imports = [
-                        import_.strip() for import_ in match["imports"].split(", ")
-                    ]
+                    imports = [import_.strip() for import_ in match["imports"].split(", ")]
                     imports.remove(object_name)
                     new_imports = ", ".join(imports)
                     if match["comment"]:
-                        new_imports += f'  {match["comment"]}'
+                        new_imports += f"  {match['comment']}"
                     self.imports[line_number] = f"{match['from']} {new_imports}"
                     return
             # If it's a multiline import statement
@@ -591,7 +577,6 @@ class SourceCode:  # noqa: R090
                 objects.update({obj.split()[-1]: obj for obj in cached_objects[module_name]})
             else:
                 try:
-                    print('importing', module_name)
                     module = importlib.import_module(module_name)
                 except Exception:
                     continue
