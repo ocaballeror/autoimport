@@ -1,14 +1,14 @@
 """Define the entities."""
 
+import hashlib
 import sys
 import importlib.util
 import inspect
+import pickle
 import re
 import pkgutil
-from importlib import import_module
 from pathlib import Path
-from types import ModuleType
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import autoflake
 from pyflakes.messages import UndefinedExport, UndefinedName, UnusedImport
@@ -58,6 +58,8 @@ class SourceCode:  # noqa: R090
         self._trailing_newline = False
         self._split_code(source_code)
         self.keep_unused_imports = keep_unused_imports
+        self.cache_dir = Path(".autoimport_cache")
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def fix(self) -> str:
         """Fix python source code to correct import statements.
@@ -381,7 +383,7 @@ class SourceCode:  # noqa: R090
             sys.path.append(str(here()))
 
         for package in self._find_project_packages():
-            package_objects.update(extract_package_objects(package))
+            package_objects.update(self.extract_package_objects(package))
 
         # nocover: as the tests are run inside the autoimport virtualenv, it will
         # always find the objects on that package
@@ -411,8 +413,7 @@ class SourceCode:  # noqa: R090
 
         return f"import {name}"
 
-    @staticmethod
-    def _find_package_in_libraries(name: str) -> Optional[str]:
+    def _find_package_in_libraries(self, name: str) -> Optional[str]:
         """Search in the typing library the object name.
 
         Args:
@@ -422,7 +423,7 @@ class SourceCode:  # noqa: R090
             import_string: Python 3.7 type checking compatible import string.
         """
         for lib in common_libraries:
-            objects = extract_package_objects(lib)
+            objects = self.extract_package_objects(lib)
             if name in objects:
                 return objects[name]
 
@@ -535,57 +536,76 @@ class SourceCode:  # noqa: R090
 
                 return
 
+    def get_cache_path(self, package_name: str) -> Path:
+        hash_name = hashlib.sha256(package_name.encode()).hexdigest()
+        return self.cache_dir / f"{hash_name}.pkl"
 
-def import_submodules(module: ModuleType) -> Set[ModuleType]:
-    """
-    Import all modules from the specified root package and its subpackages recursively.
-    """
-    imported: Set[ModuleType] = set()
-    if not hasattr(module, "__path__"):
-        if hasattr(module, "__file__"):
-            return {module}
-        raise ValueError(f"Cannot find submodules of module {module}")
+    def find_package_files(self, package_name: str) -> Dict[str, Path]:
+        """
+        Recursively find all .py files in the package directory without importing.
+        Returns a mapping: module_name -> file_path
+        """
+        parts = package_name.split(".")
+        base_path = None
+        for path_entry in sys.path:
+            candidate = Path(path_entry, *parts)
+            if candidate.is_dir():
+                base_path = candidate
+                break
+        if base_path is None:
+            return {}
 
-    for _, mod_name, ispkg in pkgutil.iter_modules(module.__path__):
-        try:
-            submodule = import_module(".".join((module.__name__, mod_name)))
-        except Exception:
-            continue
-
-        imported.add(submodule)
-        if ispkg:
-            imported.update(import_submodules(submodule))
-
-    return imported
-
-
-def extract_package_objects(name: str) -> Dict[str, str]:
-    """Extract the package objects and their import string.
-
-    Returns:
-        objects: A dictionary with the object name as a key and the import string
-            as the value.
-    """
-    package_objects: Dict[str, str] = {}
-
-    # Get the modules of the desired package
-    try:
-        root_module = importlib.import_module(name)
-
-    except ModuleNotFoundError:
-        return package_objects
-
-    package_modules = list(import_submodules(root_module))
-
-    # Get objects of the package
-    for module in package_modules:
-        for object_name, package_object in inspect.getmembers(module):
-            if object_name.startswith("_") or object_name in package_objects:
+        modules = {}
+        for py_file in base_path.rglob("*.py"):
+            if py_file.name.startswith("_"):
                 continue
+            # Convert path to module name
+            rel_path = py_file.relative_to(Path(path_entry))
+            mod_name = ".".join(rel_path.with_suffix("").parts)
+            modules[mod_name] = py_file
 
-            if hasattr(package_object, "__module__"):
-                package_objects[
-                    object_name
-                ] = f"from {package_object.__module__} import {object_name}"
+        return modules
 
-    return package_objects
+    def extract_package_objects(self, package_name: str) -> Dict[str, str]:
+        cache_path = self.get_cache_path(package_name)
+        module_files = self.find_package_files(package_name)
+        module_mtimes = {name: f.stat().st_mtime for name, f in module_files.items()}
+
+        # Check cache
+        cached_objects = {}
+        cached_mtimes = {}
+        if cache_path.exists():
+            try:
+                cache_data = pickle.loads(cache_path.read_bytes())
+                cached_mtimes = cache_data["mtimes"]
+                cached_objects = cache_data["objects"]
+            except Exception:
+                pass  # fallback to recalculation
+
+        # Cache invalid, import only changed/new modules
+        objects: Dict[str, str] = {}
+        for module_name in module_files:
+            if module_name in cached_objects and module_mtimes[module_name] <= cached_mtimes.get(
+                module_name, 0
+            ):
+                objects.update({obj.split()[-1]: obj for obj in cached_objects[module_name]})
+            else:
+                try:
+                    print('importing', module_name)
+                    module = importlib.import_module(module_name)
+                except Exception:
+                    continue
+
+                cached_objects[module_name] = []
+                for obj_name, obj in inspect.getmembers(module):
+                    if obj_name.startswith("_") or obj_name in objects:
+                        continue
+                    if hasattr(obj, "__module__"):
+                        objects[obj_name] = f"from {obj.__module__} import {obj_name}"
+                        cached_objects[module_name].append(objects[obj_name])
+
+        # Save cache
+        cached_objects = {"objects": cached_objects, "mtimes": module_mtimes}
+        cache_path.write_bytes(pickle.dumps(cached_objects))
+
+        return objects
