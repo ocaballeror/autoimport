@@ -39,7 +39,7 @@ def fix_files(
     """
     for file_wrapper in files:
         source = file_wrapper.read()
-        fixed_source = fix_code(source, config, keep_unused_imports)
+        fixed_source = fix_code(source, file_wrapper.name, config, keep_unused_imports)
 
         if fixed_source == source and file_wrapper.name != "<stdin>":
             continue
@@ -54,6 +54,7 @@ def fix_files(
 
 def fix_code(
     original_source_code: str,
+    filename: str,
     config: Optional[Dict[str, Any]] = None,
     keep_unused_imports: bool = False,
 ) -> str:
@@ -73,5 +74,8 @@ def fix_code(
         Corrected source code.
     """
     return SourceCode(
-        original_source_code, config=config, keep_unused_imports=keep_unused_imports
+        original_source_code,
+        filename=filename,
+        config=config,
+        keep_unused_imports=keep_unused_imports,
     ).fix()

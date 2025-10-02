@@ -6,6 +6,8 @@ import importlib.util
 import inspect
 import pickle
 import re
+import statistics
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -45,6 +47,7 @@ class SourceCode:  # noqa: R090
     def __init__(
         self,
         source_code: str,
+        filename: str,
         config: Optional[Dict[str, Any]] = None,
         keep_unused_imports: bool = False,
     ) -> None:
@@ -53,6 +56,7 @@ class SourceCode:  # noqa: R090
         self.imports: List[str] = []
         self.typing: List[str] = []
         self.code: List[str] = []
+        self.filename: str = filename
         self.config: Dict[str, Any] = config if config else {}
         self._trailing_newline = False
         self._split_code(source_code)
@@ -361,6 +365,27 @@ class SourceCode:  # noqa: R090
             if path.is_dir() and path.name != "tests" and (path / "__init__.py").exists()
         ]
 
+    def _find_usage(self, target: str) -> list[str]:
+        import ast
+
+        mo = ast.parse(self._join_code())
+        track = None
+        uses = []
+        for node in ast.walk(mo):
+            if isinstance(node, ast.Assign):
+                if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name):
+                    if isinstance(node.targets[0], ast.Name) and node.value.func.id == target:
+                        track = node.targets[0].id
+
+            if track and isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                if isinstance(node.value.func, ast.Attribute) and isinstance(
+                    node.value.func.value, ast.Name
+                ):
+                    if node.value.func.value.id == track:
+                        uses.append(node.value.func.attr)
+
+        return uses
+
     def _find_package_in_our_project(self, name: str) -> Optional[str]:
         """Search the name in the objects of the package we are developing.
 
@@ -370,22 +395,44 @@ class SourceCode:  # noqa: R090
         Returns:
             import_string: String required to import the package.
         """
-        package_objects = {}
-
         if str(here()) not in sys.path:
             sys.path.append(str(here()))
 
-        for package in self._find_project_packages():
-            package_objects.update(self.extract_package_objects(package))
+        import_lines = [
+            line
+            for package in self._find_project_packages()
+            for object_name, candidates in self.extract_package_objects(package).items()
+            if object_name == name
+            for line in candidates
+        ]
 
-        # nocover: as the tests are run inside the autoimport virtualenv, it will
-        # always find the objects on that package
-        if package_objects is None:  # pragma: nocover
+        if not import_lines:
             return None
-        try:
-            return package_objects[name]
-        except KeyError:
-            return None
+
+        if len(set(import_lines)) == 1:
+            return import_lines[0]
+
+        return self._pick_best_candidate(name, import_lines)
+
+    def _pick_best_candidate(self, name: str, import_lines: List[str]) -> str:
+        usage = self._find_usage(name)
+        if not usage:
+            return statistics.mode(import_lines)
+
+        matching_candidates = []
+        for candidate in import_lines:
+            _, path, _, _ = candidate.split()
+            module = importlib.import_module(path)
+            object = getattr(module, name)
+            if not object:
+                continue
+            if all(hasattr(object, attr) for attr in usage):
+                matching_candidates.append(candidate)
+
+        if matching_candidates:
+            return statistics.mode(matching_candidates)
+
+        return statistics.mode(import_lines)
 
     @staticmethod
     def _find_package_in_modules(name: str) -> Optional[str]:
@@ -418,7 +465,7 @@ class SourceCode:  # noqa: R090
         for lib in common_libraries:
             objects = self.extract_package_objects(lib)
             if name in objects:
-                return objects[name]
+                return objects[name][0]
 
         return None
 
@@ -551,7 +598,7 @@ class SourceCode:  # noqa: R090
 
         return modules
 
-    def extract_package_objects(self, package_name: str) -> Dict[str, str]:
+    def extract_package_objects(self, package_name: str) -> Dict[str, List[str]]:
         cache_path = self.get_cache_path(package_name)
         module_files = self.find_package_files(package_name)
         module_mtimes = {name: f.stat().st_mtime for name, f in module_files.items()}
@@ -568,7 +615,7 @@ class SourceCode:  # noqa: R090
                 pass  # fallback to recalculation
 
         # Cache invalid, import only changed/new modules
-        objects: Dict[str, str] = {}
+        objects: Dict[str, List[str]] = defaultdict(list)
         for module_name in module_files:
             if module_name in cached_objects and module_mtimes[module_name] <= cached_mtimes.get(
                 module_name, 0
@@ -582,11 +629,12 @@ class SourceCode:  # noqa: R090
 
                 cached_objects[module_name] = []
                 for obj_name, obj in inspect.getmembers(module):
-                    if obj_name.startswith("_") or obj_name in objects:
+                    if obj_name.startswith("_"):
                         continue
                     if hasattr(obj, "__module__"):
-                        objects[obj_name] = f"from {obj.__module__} import {obj_name}"
-                        cached_objects[module_name].append(objects[obj_name])
+                        import_line = f"from {obj.__module__} import {obj_name}"
+                        objects[obj_name].append(import_line)
+                        cached_objects[module_name].append(import_line)
 
         # Save cache
         cached_objects = {"objects": cached_objects, "mtimes": module_mtimes}
