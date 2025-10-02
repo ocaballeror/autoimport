@@ -14,7 +14,11 @@ from autoimport.model import SourceCode
 
 
 def isort(files: Tuple[TextIOWrapper, ...]) -> None:
-    if shutil.which("isort"):
+    if shutil.which("ruff"):
+        subprocess.run(["ruff", "check", "--silent", "--fix", *(f.name for f in files)])
+        subprocess.run(["ruff", "format", "--silent", *(f.name for f in files)])
+
+    elif shutil.which("isort"):
         subprocess.run(["isort", *(f.name for f in files)])
 
 
