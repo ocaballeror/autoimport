@@ -26,6 +26,7 @@ common_statements: Dict[str, str] = {
     "MagicMock": "from unittest.mock import MagicMock",
     "Path": "from pathlib import Path",
     "StringIO": "from io import StringIO",
+    "UUID": "from uuid import UUID",
     "YAMLError": "from yaml import YAMLError",
     "abstractmethod": "from abc import abstractmethod",
     "config": "from decouple import config",
