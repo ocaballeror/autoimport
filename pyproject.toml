@@ -62,7 +62,6 @@ dev = [
     "types-toml>=0.10.3",
     "pytest>=7.1.3",
     "pytest-cov>=3.0.0",
-    "pytest-xdist>=3.0.2",
     "ruff>=0.14.0"
 ]
 
@@ -80,7 +79,7 @@ build-backend = "pdm.backend"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-vv --tb=short -n auto"
+addopts = "-vv -rs --tb=short"
 norecursedirs = [
     ".tox",
     ".git",
