@@ -49,7 +49,7 @@ class SourceCode:  # noqa: R090
     def __init__(
         self,
         source_code: str,
-        filename: str,
+        filename: str = "<string>",
         config: dict[str, Any] | None = None,
         keep_unused_imports: bool = False,
     ) -> None:

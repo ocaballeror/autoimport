@@ -10,7 +10,7 @@ import click
 # Migrate away from xdg to xdg-base-dirs once only Python >= 3.10 is supported
 # https://github.com/lyz-code/autoimport/issues/239
 import xdg
-from maison.config import ProjectConfig
+from maison import UserConfig
 
 from autoimport import services, version
 
@@ -86,9 +86,9 @@ def cli(
     if config_file is not None:
         config_files.append(config_file)
 
-    config = ProjectConfig(
-        project_name="autoimport", source_files=config_files, merge_configs=True
-    ).to_dict()
+    config = UserConfig(
+        package_name="autoimport", source_files=config_files, merge_configs=True
+    ).values
 
     # Process inputs
     flattened_files = flatten(files)
