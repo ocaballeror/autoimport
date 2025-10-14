@@ -621,7 +621,8 @@ class SourceCode:  # noqa: R090
             if module_name in cached_objects and module_mtimes[module_name] <= cached_mtimes.get(
                 module_name, 0
             ):
-                objects.update({obj.split()[-1]: obj for obj in cached_objects[module_name]})
+                for obj in cached_objects[module_name]:
+                    objects[obj.split()[-1]].append(obj)
             else:
                 try:
                     module = importlib.import_module(module_name)
