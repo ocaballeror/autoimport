@@ -138,6 +138,7 @@ module = "tests.*"
 # parametrize decorators
 disallow_untyped_decorators = false
 disallow_untyped_defs = false
+disallow_incomplete_defs = false
 
 # --------- Ruff -------------
 
