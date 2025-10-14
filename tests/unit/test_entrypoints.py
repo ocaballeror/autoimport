@@ -1,9 +1,10 @@
 """Tests for all entrypints modules."""
 
 import re
+from collections.abc import Sequence
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import click
 import pytest
@@ -19,14 +20,14 @@ from autoimport.entrypoints.cli import FileOrDir, flatten, get_files
         ([["a", "b", "c"], "d"], ("a", "b", "c", "d")),
     ],
 )
-def test_flatten(sequence: Sequence[Any], expected: Sequence[Any]) -> None:
+def test_flatten(sequence: Sequence[Any], expected: Sequence[Any]):
     """Test the flatten function works."""
     result = flatten(sequence)
 
     assert result == expected
 
 
-def test_custom_param_type_works_with_dir(test_dir: Path) -> None:
+def test_custom_param_type_works_with_dir(test_dir: Path):
     """Ensure the custom param type can be parsed a directory."""
     param_type = FileOrDir()
 
@@ -38,7 +39,7 @@ def test_custom_param_type_works_with_dir(test_dir: Path) -> None:
         file_.close()
 
 
-def test_custom_param_type_works_with_file(test_dir: Path) -> None:
+def test_custom_param_type_works_with_file(test_dir: Path):
     """Ensure the custom param type can be parsed a file."""
     param_type = FileOrDir()
 
@@ -49,9 +50,7 @@ def test_custom_param_type_works_with_file(test_dir: Path) -> None:
 
 
 @pytest.mark.parametrize("filename", ["h.py", "new_dir"])
-def test_custom_param_type_with_non_existing_files(
-    test_dir: Path, filename: str
-) -> None:
+def test_custom_param_type_with_non_existing_files(test_dir: Path, filename: str):
     """Ensure an error occurs when a non existing file or dir is parsed."""
     param_type = FileOrDir()
 
@@ -61,7 +60,7 @@ def test_custom_param_type_with_non_existing_files(
     assert f"{filename}' does not exist" in error.value.args[0]
 
 
-def test_get_files(test_dir: Path) -> None:
+def test_get_files(test_dir: Path):
     """Ensure we can get all files recursively from a given directory."""
     result = get_files(str(test_dir))
 

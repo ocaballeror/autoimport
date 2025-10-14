@@ -1,22 +1,22 @@
 """Define the entities."""
 
 import hashlib
-import sys
 import importlib.util
 import inspect
 import pickle
 import re
 import statistics
+import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import autoflake
 from pyflakes.messages import UndefinedExport, UndefinedName, UnusedImport
 from pyprojroot import here
 
 common_libraries = ("typing",)
-common_statements: Dict[str, str] = {
+common_statements: dict[str, str] = {
     "ABC": "from abc import ABC",
     "BaseModel": "from pydantic import BaseModel",
     "Field": "from pydantic import Field",
@@ -49,16 +49,16 @@ class SourceCode:  # noqa: R090
         self,
         source_code: str,
         filename: str,
-        config: Optional[Dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
         keep_unused_imports: bool = False,
     ) -> None:
         """Initialize the object."""
-        self.header: List[str] = []
-        self.imports: List[str] = []
-        self.typing: List[str] = []
-        self.code: List[str] = []
+        self.header: list[str] = []
+        self.imports: list[str] = []
+        self.typing: list[str] = []
+        self.code: list[str] = []
         self.filename: str = filename
-        self.config: Dict[str, Any] = config if config else {}
+        self.config: dict[str, Any] = config if config else {}
         self._trailing_newline = False
         self._split_code(source_code)
         self.keep_unused_imports = keep_unused_imports
@@ -99,7 +99,7 @@ class SourceCode:  # noqa: R090
         if source_code.endswith("\n"):
             self._trailing_newline = True
 
-    def _extract_header(self, source_lines: List[str]) -> None:
+    def _extract_header(self, source_lines: list[str]) -> None:
         """Save the module leading comments and docstring from the source code.
 
         Save them into self.header.
@@ -107,7 +107,7 @@ class SourceCode:  # noqa: R090
         Args:
             source_lines: A list containing all code lines.
         """
-        docstring_type: Optional[str] = None
+        docstring_type: str | None = None
 
         for line in source_lines:
             if re.match(r'"{3}.*"{3}', line):
@@ -128,7 +128,7 @@ class SourceCode:  # noqa: R090
                 break
             self.header.append(line)
 
-    def _extract_import_statements(self, source_lines: List[str]) -> None:
+    def _extract_import_statements(self, source_lines: list[str]) -> None:
         """Save the import statements from the source code into self.imports.
 
         Args:
@@ -136,7 +136,7 @@ class SourceCode:  # noqa: R090
         """
         import_start_line = len(self.header)
         multiline_import = False
-        try_line: Optional[str] = None
+        try_line: str | None = None
 
         for line in source_lines[import_start_line:]:
             if re.match(r"^if TYPE_CHECKING:$", line):
@@ -160,7 +160,7 @@ class SourceCode:  # noqa: R090
             else:
                 break
 
-    def _extract_typing_statements(self, source_lines: List[str]) -> None:
+    def _extract_typing_statements(self, source_lines: list[str]) -> None:
         """Save the typing statements from the source code into self.typing.
 
         Args:
@@ -178,7 +178,7 @@ class SourceCode:  # noqa: R090
                     break
                 self.typing.append(line)
 
-    def _extract_code(self, source_lines: List[str]) -> None:
+    def _extract_code(self, source_lines: list[str]) -> None:
         """Save the code from the source code into self.code.
 
         Args:
@@ -234,10 +234,12 @@ class SourceCode:  # noqa: R090
     @staticmethod
     def _should_ignore_line(line: str) -> bool:
         """Determine whether a line should be ignored by autoimport or not."""
-        return any([
-            re.match(r".*?# ?fmt:.*?skip.*", line),
-            re.match(r".*?# ?noqa:.*?autoimport.*", line),
-        ])
+        return any(
+            [
+                re.match(r".*?# ?fmt:.*?skip.*", line),
+                re.match(r".*?# ?noqa:.*?autoimport.*", line),
+            ]
+        )
 
     def _move_imports_to_top(self) -> None:
         """Fix python source code to move import statements to the top of the file.
@@ -291,7 +293,7 @@ class SourceCode:  # noqa: R090
             self.code.remove(line)
 
     @staticmethod
-    def _split_separation_line(line: str) -> Tuple[str, str]:
+    def _split_separation_line(line: str) -> tuple[str, str]:
         """Split separation lines into two and return both lines back."""
         first_line, next_line = line.split(";")
         # add correct number of leading spaces
@@ -325,7 +327,7 @@ class SourceCode:  # noqa: R090
         if import_string is not None:
             self.imports.append(import_string)
 
-    def _find_package(self, name: str) -> Optional[str]:
+    def _find_package(self, name: str) -> str | None:
         """Search package by an object's name.
 
         It will search in these places:
@@ -352,7 +354,7 @@ class SourceCode:  # noqa: R090
                 return package
         return None
 
-    def _find_project_packages(self, where: Optional[Path] = None) -> List[str]:
+    def _find_project_packages(self, where: Path | None = None) -> list[str]:
         if not where:
             where = here()
 
@@ -387,7 +389,7 @@ class SourceCode:  # noqa: R090
 
         return uses
 
-    def _find_package_in_our_project(self, name: str) -> Optional[str]:
+    def _find_package_in_our_project(self, name: str) -> str | None:
         """Search the name in the objects of the package we are developing.
 
         Args:
@@ -415,7 +417,7 @@ class SourceCode:  # noqa: R090
 
         return self._pick_best_candidate(name, import_lines)
 
-    def _pick_best_candidate(self, name: str, import_lines: List[str]) -> str:
+    def _pick_best_candidate(self, name: str, import_lines: list[str]) -> str:
         usage = self._find_usage(name)
         if not usage:
             return statistics.mode(import_lines)
@@ -436,7 +438,7 @@ class SourceCode:  # noqa: R090
         return statistics.mode(import_lines)
 
     @staticmethod
-    def _find_package_in_modules(name: str) -> Optional[str]:
+    def _find_package_in_modules(name: str) -> str | None:
         """Search in the PYTHONPATH modules if object is a package.
 
         Args:
@@ -454,7 +456,7 @@ class SourceCode:  # noqa: R090
 
         return f"import {name}"
 
-    def _find_package_in_libraries(self, name: str) -> Optional[str]:
+    def _find_package_in_libraries(self, name: str) -> str | None:
         """Search in the typing library the object name.
 
         Args:
@@ -478,7 +480,7 @@ class SourceCode:  # noqa: R090
             return disable_move_to_top
         return self.config.get("tool", {}).get("autoimport", {}).get("disable_move_to_top", False)
 
-    def _get_additional_statements(self) -> Dict[str, str]:
+    def _get_additional_statements(self) -> dict[str, str]:
         """Fetch the common_statements configuration value."""
         # When parsing to the cli via --config-file the config becomes nested.
         config_statements = self.config.get("common_statements")
@@ -486,7 +488,7 @@ class SourceCode:  # noqa: R090
             return config_statements
         return self.config.get("tool", {}).get("autoimport", {}).get("common_statements")
 
-    def _find_package_in_common_statements(self, name: str) -> Optional[str]:
+    def _find_package_in_common_statements(self, name: str) -> str | None:
         """Search in the common statements the object name.
 
         Args:
@@ -573,7 +575,7 @@ class SourceCode:  # noqa: R090
         hash_name = hashlib.sha256(package_name.encode()).hexdigest()
         return self.cache_dir / f"{hash_name}.pkl"
 
-    def find_package_files(self, package_name: str) -> Dict[str, Path]:
+    def find_package_files(self, package_name: str) -> dict[str, Path]:
         """
         Recursively find all .py files in the package directory without importing.
         Returns a mapping: module_name -> file_path
@@ -599,7 +601,7 @@ class SourceCode:  # noqa: R090
 
         return modules
 
-    def extract_package_objects(self, package_name: str) -> Dict[str, List[str]]:
+    def extract_package_objects(self, package_name: str) -> dict[str, list[str]]:
         cache_path = self.get_cache_path(package_name)
         module_files = self.find_package_files(package_name)
         module_mtimes = {name: f.stat().st_mtime for name, f in module_files.items()}
@@ -616,7 +618,7 @@ class SourceCode:  # noqa: R090
                 pass  # fallback to recalculation
 
         # Cache invalid, import only changed/new modules
-        objects: Dict[str, List[str]] = defaultdict(list)
+        objects: dict[str, list[str]] = defaultdict(list)
         for module_name in module_files:
             if module_name in cached_objects and module_mtimes[module_name] <= cached_mtimes.get(
                 module_name, 0

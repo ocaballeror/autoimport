@@ -6,7 +6,7 @@ import sys
 from autoimport.version import __version__, version_info
 
 
-def test_version() -> None:
+def test_version():
     """
     Given: Nothing
     When: version_info is called

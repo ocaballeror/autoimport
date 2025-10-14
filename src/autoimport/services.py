@@ -6,14 +6,13 @@ and handlers to achieve the program's purpose.
 
 import shutil
 import subprocess
-from typing import Any, Dict, Optional, Tuple
-
 from _io import TextIOWrapper
+from typing import Any
 
 from autoimport.model import SourceCode
 
 
-def isort(files: Tuple[TextIOWrapper, ...]) -> None:
+def isort(files: tuple[TextIOWrapper, ...]) -> None:
     if shutil.which("ruff"):
         subprocess.run(["ruff", "check", "--silent", "--fix", *(f.name for f in files)])
         subprocess.run(["ruff", "format", "--silent", *(f.name for f in files)])
@@ -23,8 +22,8 @@ def isort(files: Tuple[TextIOWrapper, ...]) -> None:
 
 
 def fix_files(
-    files: Tuple[TextIOWrapper, ...],
-    config: Optional[Dict[str, Any]] = None,
+    files: tuple[TextIOWrapper, ...],
+    config: dict[str, Any] | None = None,
     keep_unused_imports: bool = False,
 ) -> None:
     """Fix the python source code of a list of files.
@@ -55,7 +54,7 @@ def fix_files(
 def fix_code(
     original_source_code: str,
     filename: str,
-    config: Optional[Dict[str, Any]] = None,
+    config: dict[str, Any] | None = None,
     keep_unused_imports: bool = False,
 ) -> str:
     """Fix python source code to correct import statements.

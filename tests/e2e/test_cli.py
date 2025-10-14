@@ -4,7 +4,6 @@ import os
 import re
 from pathlib import Path
 from textwrap import dedent
-from typing import Dict, List, Optional
 
 import pytest
 from click.testing import CliRunner
@@ -71,9 +70,7 @@ def test_corrects_three_files(runner: CliRunner, tmp_path: Path) -> None:
         assert test_file.read_text() == fixed_source
 
 
-def test_correct_all_files_in_dir_recursively(
-    runner: CliRunner, test_dir: Path
-) -> None:
+def test_correct_all_files_in_dir_recursively(runner: CliRunner, test_dir: Path) -> None:
     """Ensure files and dirs can be parsed and fixes associated files."""
     result = runner.invoke(cli, [str(test_dir)])
 
@@ -83,9 +80,7 @@ def test_correct_all_files_in_dir_recursively(
     assert (test_dir / "subdir/test_file2.py").read_text() == fixed_source
 
 
-def test_correct_mix_dir_and_files(
-    runner: CliRunner, test_dir: Path, tmp_path: Path
-) -> None:
+def test_correct_mix_dir_and_files(runner: CliRunner, test_dir: Path, tmp_path: Path) -> None:
     """Ensure all files in a given directory get fixed by autoimport."""
     test_file = tmp_path / "source.py"
     test_file.write_text("os.getcwd()")
@@ -129,9 +124,8 @@ def test_pyproject_common_statements(runner: CliRunner, tmp_path: Path) -> None:
     )
     test_file = tmp_path / "source.py"
     test_file.write_text("FooBar\n")
-    # AAA03: Until https://github.com/jamescooke/flake8-aaa/issues/196 is fixed
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(cli, [str(test_file)])  # noqa: AAA03
+        result = runner.invoke(cli, [str(test_file)])
 
     assert result.exit_code == 0
     assert test_file.read_text() == dedent(
@@ -182,9 +176,7 @@ def test_config_path_argument(runner: CliRunner, tmp_path: Path) -> None:
         pytest.param(True, False, False, "from g import G", id="global"),
         pytest.param(False, True, False, "from r import R", id="local"),
         pytest.param(False, False, True, "from p import P", id="pyproject"),
-        pytest.param(
-            True, True, False, "from g import G\nfrom r import R", id="global-and-local"
-        ),
+        pytest.param(True, True, False, "from g import G\nfrom r import R", id="global-and-local"),
         pytest.param(
             True,
             False,
@@ -205,12 +197,10 @@ def test_config_path_argument(runner: CliRunner, tmp_path: Path) -> None:
             True,
             "from g import G\nfrom r import R\nfrom p import P",
             id="global-and-local-and-pyproject",
-        ),  # noqa: R0913, R0914
+        ),
     ],
 )
-# R0913: Too many arguments (6/5): We need to refactor this test in many more
-# R0914: Too many local variables (16/15): We need to refactor this test in many more
-def test_global_and_local_config(  # noqa: R0913, R0914
+def test_global_and_local_config(
     runner: CliRunner,
     tmp_path: Path,
     create_global_conf: bool,
@@ -238,8 +228,8 @@ def test_global_and_local_config(  # noqa: R0913, R0914
         """
     )
     code_path.write_text(original_code)
-    args: List[str] = [str(code_path)]
-    env: Dict[str, Optional[str]] = {}
+    args: list[str] = [str(code_path)]
+    env: dict[str, str | None] = {}
     if create_global_conf:
         xdg_home = (tmp_path / "xdg_home").resolve()  # must be absolute path
         env["XDG_CONFIG_HOME"] = str(xdg_home)
@@ -254,9 +244,8 @@ def test_global_and_local_config(  # noqa: R0913, R0914
     if create_pyproject:
         pyproject_path = tmp_path / "pyproject.toml"
         pyproject_path.write_text(config["pyproject"])
-    # AAA03: Until https://github.com/jamescooke/flake8-aaa/issues/196 is fixed
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(cli, args, env=env)  # noqa: AAA03
+        result = runner.invoke(cli, args, env=env)
 
     assert result.exit_code == 0
     assert code_path.read_text() == expected_imports + "\n\n" + original_code
@@ -317,8 +306,8 @@ def test_global_and_local_config_precedence(runner: CliRunner, tmp_path: Path) -
         """
     )
     code_path.write_text(original_code)
-    args: List[str] = [str(code_path)]
-    env: Dict[str, Optional[str]] = {}
+    args: list[str] = [str(code_path)]
+    env: dict[str, str | None] = {}
     # create_global_conf:
     xdg_home = (tmp_path / "xdg_home").resolve()  # must be absolute path
     env["XDG_CONFIG_HOME"] = str(xdg_home)
@@ -333,9 +322,8 @@ def test_global_and_local_config_precedence(runner: CliRunner, tmp_path: Path) -
     # create_pyproject:
     pyproject_path = tmp_path / "pyproject.toml"
     pyproject_path.write_text(config["pyproject"])
-    # AAA03: Until https://github.com/jamescooke/flake8-aaa/issues/196 is fixed
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(cli, args, env=env)  # noqa: AAA03
+        result = runner.invoke(cli, args, env=env)
 
     assert result.exit_code == 0
     assert code_path.read_text() == expected_imports + "\n" + original_code

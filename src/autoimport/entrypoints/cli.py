@@ -1,8 +1,9 @@
 """Command line interface definition."""
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import IO, Any, List, Optional, Sequence, Tuple, Union
+from typing import IO, Any
 
 import click
 
@@ -16,7 +17,7 @@ from autoimport import services, version
 log = logging.getLogger(__name__)
 
 
-def get_files(source_path: str) -> List[IO[Any]]:
+def get_files(source_path: str) -> list[IO[Any]]:
     """Get all files recursively from the given source path."""
     files = []
     for py_file in Path(source_path).glob("**/*.py"):
@@ -25,7 +26,7 @@ def get_files(source_path: str) -> List[IO[Any]]:
     return files
 
 
-def flatten(seq: Sequence[Any]) -> Tuple[Any, ...]:
+def flatten(seq: Sequence[Any]) -> tuple[Any, ...]:
     """Flatten nested sequences."""
     flattened = []
     for items in seq:
@@ -43,10 +44,10 @@ class FileOrDir(click.ParamType):
 
     def convert(
         self,
-        value: Union[str, Path],
-        param: Optional[click.Parameter],
-        ctx: Optional[click.Context],
-    ) -> List[IO[Any]]:
+        value: str | Path,
+        param: click.Parameter | None,
+        ctx: click.Context | None,
+    ) -> list[IO[Any]]:
         """Convert the value to the correct type."""
         try:
             return [click.File("r+").convert(value, param, ctx)]
@@ -67,14 +68,14 @@ class FileOrDir(click.ParamType):
 )
 @click.argument("files", type=FileOrDir(), nargs=-1)
 def cli(
-    files: List[IO[Any]],
-    config_file: Optional[str] = None,
+    files: list[IO[Any]],
+    config_file: str | None = None,
     ignore_init_modules: bool = False,
     keep_unused_imports: bool = False,
 ) -> None:
     """Corrects the source code of the specified files."""
     # Compose configuration
-    config_files: List[str] = []
+    config_files: list[str] = []
 
     global_config_path = xdg.xdg_config_home() / "autoimport" / "config.toml"
     if global_config_path.is_file():
@@ -92,17 +93,9 @@ def cli(
     # Process inputs
     flattened_files = flatten(files)
     if ignore_init_modules:
-        flattened_files = tuple(
-            file for file in flattened_files if "__init__.py" not in file.name
-        )
+        flattened_files = tuple(file for file in flattened_files if "__init__.py" not in file.name)
 
-    try:
-        fixed_code = services.fix_files(flattened_files, config, keep_unused_imports)
-    except FileNotFoundError as error:
-        log.error(error)
-
-    if fixed_code is not None:
-        print(fixed_code, end="")
+    services.fix_files(flattened_files, config, keep_unused_imports)
 
 
 if __name__ == "__main__":  # pragma: no cover

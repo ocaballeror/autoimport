@@ -5,8 +5,6 @@ Functions:
     fix_files: Fix the python source code of a list of files.
 """
 
-from typing import List
-
 from .services import fix_code, fix_files
 
-__all__: List[str] = ["fix_code", "fix_files"]
+__all__: list[str] = ["fix_code", "fix_files"]

@@ -8,7 +8,7 @@ from autoimport.model import common_statements
 from autoimport.services import fix_code
 
 
-def test_fix_code_adds_missing_import() -> None:
+def test_fix_code_adds_missing_import():
     """Understands that os is a package and add it to the top of the file."""
     source = "os.getcwd()"
     fixed_source = dedent(
@@ -24,7 +24,7 @@ def test_fix_code_adds_missing_import() -> None:
     assert result == fixed_source
 
 
-def test_fix_doesnt_change_source_if_package_doesnt_exist() -> None:
+def test_fix_doesnt_change_source_if_package_doesnt_exist():
     """As foo is not found, nothing is changed."""
     source = "foo"
 
@@ -33,7 +33,7 @@ def test_fix_doesnt_change_source_if_package_doesnt_exist() -> None:
     assert result == source
 
 
-def test_fix_imports_packages_below_docstring() -> None:
+def test_fix_imports_packages_below_docstring():
     """Imports are located below the module docstrings."""
     source = dedent(
         '''\
@@ -60,7 +60,7 @@ def test_fix_imports_packages_below_docstring() -> None:
     assert result == fixed_source
 
 
-def test_fix_imports_packages_below_single_line_docstring() -> None:
+def test_fix_imports_packages_below_single_line_docstring():
     """Imports are located below the module docstrings when they only take one line."""
     source = dedent(
         '''\
@@ -84,11 +84,11 @@ def test_fix_imports_packages_below_single_line_docstring() -> None:
     assert result == fixed_source
 
 
-def test_fix_imports_type_hints() -> None:
+def test_fix_imports_type_hints():
     """Typing objects are initialized with their required header."""
     source = dedent(
         """\
-        def function(dictionary: Dict) -> None:
+        def function(dictionary: Dict):
             pass"""
     )
     fixed_source = dedent(
@@ -96,7 +96,7 @@ def test_fix_imports_type_hints() -> None:
         from typing import Dict
 
 
-        def function(dictionary: Dict) -> None:
+        def function(dictionary: Dict):
             pass"""
     )
 
@@ -105,7 +105,7 @@ def test_fix_imports_type_hints() -> None:
     assert result == fixed_source
 
 
-def test_fix_removes_unneeded_imports() -> None:
+def test_fix_removes_unneeded_imports():
     """If there is an import statement of an unused package it should be removed."""
     source = dedent(
         """\
@@ -119,7 +119,7 @@ def test_fix_removes_unneeded_imports() -> None:
     assert result == fixed_source
 
 
-def test_fix_removes_multiple_unneeded_imports() -> None:
+def test_fix_removes_multiple_unneeded_imports():
     """
     Given: A source code with multiple unused import statements.
     When: fix_code is run.
@@ -140,7 +140,7 @@ def test_fix_removes_multiple_unneeded_imports() -> None:
     assert result == fixed_source
 
 
-def test_fix_removes_unneeded_imports_in_from_statements() -> None:
+def test_fix_removes_unneeded_imports_in_from_statements():
     """Remove `from package import` statement of an unused packages."""
     source = dedent(
         """\
@@ -154,7 +154,7 @@ def test_fix_removes_unneeded_imports_in_from_statements() -> None:
     assert result == fixed_source
 
 
-def test_fix_removes_unused_imports_in_multiline_from_statements() -> None:
+def test_fix_removes_unused_imports_in_multiline_from_statements():
     """
     Given: A source code with multiline import from statements.
     When: fix_code is run
@@ -184,7 +184,7 @@ def test_fix_removes_unused_imports_in_multiline_from_statements() -> None:
     assert result == fixed_source
 
 
-def test_fix_removes_unneeded_imports_in_beginning_of_from_statements() -> None:
+def test_fix_removes_unneeded_imports_in_beginning_of_from_statements():
     """Remove unused `object_name` in `from package import object_name, other_object`
     statements.
     """
@@ -207,7 +207,7 @@ def test_fix_removes_unneeded_imports_in_beginning_of_from_statements() -> None:
     assert result == fixed_source
 
 
-def test_fix_removes_unneeded_imports_in_middle_of_from_statements() -> None:
+def test_fix_removes_unneeded_imports_in_middle_of_from_statements():
     """Remove unused `object_name` in
     `from package import other_object, object_name, other_used_object` statements.
     """
@@ -232,7 +232,7 @@ def test_fix_removes_unneeded_imports_in_middle_of_from_statements() -> None:
     assert result == fixed_source
 
 
-def test_fix_removes_unneeded_imports_in_end_of_from_statements() -> None:
+def test_fix_removes_unneeded_imports_in_end_of_from_statements():
     """Remove unused `object_name` in `from package import other_object, object_name`
     statements.
     """
@@ -255,7 +255,7 @@ def test_fix_removes_unneeded_imports_in_end_of_from_statements() -> None:
     assert result == fixed_source
 
 
-def test_fix_respects_multiple_from_import_lines() -> None:
+def test_fix_respects_multiple_from_import_lines():
     """
     Given: Multiple from X import Y lines.
     When: Fix code is run
@@ -277,7 +277,7 @@ def test_fix_respects_multiple_from_import_lines() -> None:
     assert result == source
 
 
-def test_fix_respects_multiple_from_import_lines_in_multiple_lines() -> None:
+def test_fix_respects_multiple_from_import_lines_in_multiple_lines():
     """
     Given: Multiple from X import Y lines, some with multiline format.
     When: Fix code is run
@@ -301,7 +301,7 @@ def test_fix_respects_multiple_from_import_lines_in_multiple_lines() -> None:
     assert result == source
 
 
-def test_fix_respects_import_lines_in_multiple_line_strings() -> None:
+def test_fix_respects_import_lines_in_multiple_line_strings():
     """
     Given: Import lines in several multiline strings.
     When: Fix code is run.
@@ -354,7 +354,7 @@ def test_fix_respects_import_lines_in_multiple_line_strings() -> None:
     assert result == fixed_source
 
 
-def test_fix_moves_import_statements_to_the_top() -> None:
+def test_fix_moves_import_statements_to_the_top():
     """Move import statements present in the source code to the top of the file"""
     source = dedent(
         """\
@@ -378,7 +378,7 @@ def test_fix_moves_import_statements_to_the_top() -> None:
     assert result == fixed_source
 
 
-def test_fix_moves_import_statements_in_indented_code_to_the_top() -> None:
+def test_fix_moves_import_statements_in_indented_code_to_the_top():
     """Move import statements present indented in the source code
     to the top of the file
     """
@@ -410,7 +410,7 @@ def test_fix_moves_import_statements_in_indented_code_to_the_top() -> None:
     assert result == fixed_source
 
 
-def test_fix_skips_moves_to_the_top_when_disabled_is_true() -> None:
+def test_fix_skips_moves_to_the_top_when_disabled_is_true():
     """Skip moving import statements when disable_move_to_top config is true."""
     source = dedent(
         """\
@@ -430,7 +430,7 @@ def test_fix_skips_moves_to_the_top_when_disabled_is_true() -> None:
     assert result == source
 
 
-def test_fix_skips_moves_to_the_top_when_disabled_is_false() -> None:
+def test_fix_skips_moves_to_the_top_when_disabled_is_false():
     """Moving import statements should still occur when disable_move_to_top
     config is false.
     """
@@ -463,7 +463,7 @@ def test_fix_skips_moves_to_the_top_when_disabled_is_false() -> None:
     assert result == fixed_source
 
 
-def test_fix_moves_from_import_statements_to_the_top() -> None:
+def test_fix_moves_from_import_statements_to_the_top():
     """Move from import statements present in the source code to the top of the file"""
     source = dedent(
         """\
@@ -487,7 +487,7 @@ def test_fix_moves_from_import_statements_to_the_top() -> None:
     assert result == fixed_source
 
 
-def test_fix_moves_multiline_import_statements_to_the_top() -> None:
+def test_fix_moves_multiline_import_statements_to_the_top():
     """
     Given: Multiple from X import Y lines.
     When: Fix code is run.
@@ -523,7 +523,7 @@ def test_fix_moves_multiline_import_statements_to_the_top() -> None:
     assert result == fixed_source
 
 
-def test_fix_doesnt_break_objects_with_import_in_their_names() -> None:
+def test_fix_doesnt_break_objects_with_import_in_their_names():
     """Objects that have the import name in their name should not be changed."""
     source = dedent(
         """\
@@ -544,7 +544,7 @@ def test_fix_doesnt_break_objects_with_import_in_their_names() -> None:
     assert result == source
 
 
-def test_fix_doesnt_move_import_statements_with_noqa_to_the_top() -> None:
+def test_fix_doesnt_move_import_statements_with_noqa_to_the_top():
     """Ignore lines that have # noqa: autoimport."""
     source = dedent(
         """\
@@ -559,7 +559,7 @@ def test_fix_doesnt_move_import_statements_with_noqa_to_the_top() -> None:
     assert result == source
 
 
-def test_fix_doesnt_fail_on_noqa_lines_on_unused_import() -> None:
+def test_fix_doesnt_fail_on_noqa_lines_on_unused_import():
     """Ignore lines that have # noqa: autoimport."""
     source = dedent(
         """\
@@ -571,7 +571,7 @@ def test_fix_doesnt_fail_on_noqa_lines_on_unused_import() -> None:
     assert result == source
 
 
-def test_fix_respects_fmt_skip_lines() -> None:
+def test_fix_respects_fmt_skip_lines():
     """Ignore lines that have # fmt: skip."""
     source = dedent(
         """
@@ -586,7 +586,7 @@ def test_fix_respects_fmt_skip_lines() -> None:
     assert result == source
 
 
-def test_fix_respects_noqa_in_from_import_lines_in_multiple_lines() -> None:
+def test_fix_respects_noqa_in_from_import_lines_in_multiple_lines():
     """
     Given: Multiple from X import Y lines, some with multiline format with noqa
         statement.
@@ -612,7 +612,7 @@ def test_fix_respects_noqa_in_from_import_lines_in_multiple_lines() -> None:
     assert result == source
 
 
-def test_fix_respects_strings_with_import_statements() -> None:
+def test_fix_respects_strings_with_import_statements():
     """
     Given: Code with a string that has import statements structure.
     When: Fix code is run.
@@ -662,7 +662,7 @@ def test_fix_respects_strings_with_import_statements() -> None:
     assert result == fixed_source
 
 
-def test_fix_doesnt_mistake_docstrings_with_multiline_string() -> None:
+def test_fix_doesnt_mistake_docstrings_with_multiline_string():
     """
     Given: A function with a docstring.
     When: Fix code is run.
@@ -695,7 +695,7 @@ def test_fix_doesnt_mistake_docstrings_with_multiline_string() -> None:
     ((key, value) for key, value in common_statements.items()),
     ids=list(common_statements.keys()),
 )
-def test_fix_autoimports_common_imports(import_key: str, import_statement: str) -> None:
+def test_fix_autoimports_common_imports(import_key: str, import_statement: str):
     """
     Given: Code with missing import statements that match the common list.
     When: Fix code is run.
@@ -726,7 +726,7 @@ def test_fix_autoimports_common_imports(import_key: str, import_statement: str) 
     assert result == fixed_source
 
 
-def test_fix_autoimports_objects_defined_in_the_root_of_the_package() -> None:
+def test_fix_autoimports_objects_defined_in_the_root_of_the_package():
     """
     Given:
         The fix code is run from a directory that belongs to a python project package.
@@ -752,7 +752,7 @@ def test_fix_autoimports_objects_defined_in_the_root_of_the_package() -> None:
     assert result == fixed_source
 
 
-def test_fix_autoimports_objects_defined_in___all__special_variable() -> None:
+def test_fix_autoimports_objects_defined_in___all__special_variable():
     """
     Given: Some missing packages in the __all__ variable
     When: Fix code is run.
@@ -803,7 +803,7 @@ def test_fix_autoimports_objects_defined_in___all__special_variable() -> None:
         ),
     ],
 )
-def test_fix_respects_type_checking_import_statements(source: str) -> None:
+def test_fix_respects_type_checking_import_statements(source: str):
     """
     Given: Code with if TYPE_CHECKING imports
     When: Fix code is run.
@@ -816,7 +816,7 @@ def test_fix_respects_type_checking_import_statements(source: str) -> None:
     assert result == source
 
 
-def test_fix_respects_multiparagraph_type_checking_import_statements() -> None:
+def test_fix_respects_multiparagraph_type_checking_import_statements():
     """
     Given: Code with two paragraphs of imports inside an if TYPE_CHECKING block
     When: Fix code is run.
@@ -845,7 +845,7 @@ def test_fix_respects_multiparagraph_type_checking_import_statements() -> None:
     assert result == source
 
 
-def test_fix_creates_the_typing_import() -> None:
+def test_fix_creates_the_typing_import():
     """
     Given: Code with no TYPE_CHECKING import statement
     When: Fix code is run.
@@ -871,7 +871,7 @@ def test_fix_creates_the_typing_import() -> None:
     assert result == fixed_source
 
 
-def test_fix_respects_try_except_in_import_statements() -> None:
+def test_fix_respects_try_except_in_import_statements():
     """
     Given: Code with try except statements in the imports.
     When: Fix code is run
@@ -896,7 +896,7 @@ def test_fix_respects_try_except_in_import_statements() -> None:
     assert result == source
 
 
-def test_fix_respects_leading_comments() -> None:
+def test_fix_respects_leading_comments():
     """
     Given: Code with initial comments like shebang and editor configuration.
     When: Fix code is run
@@ -926,7 +926,7 @@ def test_fix_respects_leading_comments() -> None:
     assert result == desired_source
 
 
-def test_fix_respects_leading_comments_with_new_lines() -> None:
+def test_fix_respects_leading_comments_with_new_lines():
     """
     Given: Code with initial comments with new lines and a trailing newline.
     When: Fix code is run.
@@ -977,7 +977,7 @@ def test_fix_respects_leading_comments_with_new_lines() -> None:
     assert result == desired_source
 
 
-def test_fix_imports_dependency_only_once() -> None:
+def test_fix_imports_dependency_only_once():
     """
     Given: Code with a line that uses a package three times.
     When: Fix code is run.
@@ -1004,7 +1004,7 @@ def test_fix_imports_dependency_only_once() -> None:
     assert result == desired_source
 
 
-def test_fix_doesnt_fail_on_empty_file() -> None:
+def test_fix_doesnt_fail_on_empty_file():
     """
     Given: An empty file
     When: Fix code is run.
@@ -1017,7 +1017,7 @@ def test_fix_doesnt_fail_on_empty_file() -> None:
     assert result == source
 
 
-def test_fix_not_remove_unused_imports() -> None:
+def test_fix_not_remove_unused_imports():
     """
     Given: Code with imports, few being used, others not being used.
     When: Fix code is run.
@@ -1050,7 +1050,7 @@ def test_fix_not_remove_unused_imports() -> None:
     assert result == desired_source
 
 
-def test_file_that_only_has_unused_imports() -> None:
+def test_file_that_only_has_unused_imports():
     """
     Given: A file that only has unused imports.
     When: Fix code is run.
@@ -1068,7 +1068,7 @@ def test_file_that_only_has_unused_imports() -> None:
     assert result == "\n"
 
 
-def test_file_with_common_statement() -> None:
+def test_file_with_common_statement():
     """
     Given: Code with a commonly-used object.
     When: Fix code is run.
@@ -1093,7 +1093,7 @@ def test_file_with_common_statement() -> None:
     assert result == desired_source
 
 
-def test_file_with_custom_common_statement() -> None:
+def test_file_with_custom_common_statement():
     """
     Given: Code that uses an undefined object called `FooBar`.
     When:
@@ -1122,7 +1122,7 @@ def test_file_with_custom_common_statement() -> None:
     assert result == desired_source
 
 
-def test_file_with_comment_in_import() -> None:
+def test_file_with_comment_in_import():
     """
     Given: Code with a comment on two import statements
     When: Fix code is run.
@@ -1150,7 +1150,7 @@ def test_file_with_comment_in_import() -> None:
     assert result == desired_source
 
 
-def test_file_with_comment_in_from_import() -> None:
+def test_file_with_comment_in_from_import():
     """
     Given: Code with a comment on two import statements
     When: Fix code is run.
@@ -1178,7 +1178,7 @@ def test_file_with_comment_in_from_import() -> None:
     assert result == desired_source
 
 
-def test_file_with_comment_in_from_import_partial_remove() -> None:
+def test_file_with_comment_in_from_import_partial_remove():
     """
     Given: Code with a comment on an from import statement
     When: Fix code is run.
@@ -1205,7 +1205,7 @@ def test_file_with_comment_in_from_import_partial_remove() -> None:
     assert result == desired_source
 
 
-def test_file_with_comment_in_from_import_that_will_dissapear() -> None:
+def test_file_with_comment_in_from_import_that_will_dissapear():
     """
     Given: Code with a comment on an from import statement that is to be deleted
     When: Fix code is run.
@@ -1229,7 +1229,7 @@ def test_file_with_comment_in_from_import_that_will_dissapear() -> None:
     assert result == desired_source
 
 
-def test_file_with_import_as() -> None:
+def test_file_with_import_as():
     """
     Given: Code with an from x import y as z import statement
     When: Fix code is run.
@@ -1246,7 +1246,7 @@ def test_file_with_import_as() -> None:
     assert result == "\n"
 
 
-def test_file_with_non_used_multiline_import() -> None:
+def test_file_with_non_used_multiline_import():
     """
     Given: Code with a multiline from import where no one is used.
     When: Fix code is run.
@@ -1266,7 +1266,7 @@ def test_file_with_non_used_multiline_import() -> None:
     assert result == "\n"
 
 
-def test_file_with_import_and_seperator() -> None:
+def test_file_with_import_and_seperator():
     """Ensure import lines with seperators are fixed correctly."""
     source = dedent(
         """
@@ -1291,7 +1291,7 @@ def test_file_with_import_and_seperator() -> None:
     assert result == expected
 
 
-def test_file_with_import_and_seperator_indentation() -> None:
+def test_file_with_import_and_seperator_indentation():
     """Ensure import lines with seperators are fixed correctly when indented."""
     source = dedent(
         """
@@ -1318,7 +1318,7 @@ def test_file_with_import_and_seperator_indentation() -> None:
     assert result == expected
 
 
-def test_import_module_with_dot() -> None:
+def test_import_module_with_dot():
     """
     Given: An import file with an import with a dot
     When: running autoimport on the file
@@ -1337,7 +1337,7 @@ def test_import_module_with_dot() -> None:
     assert result == "\n"
 
 
-def test_respect_new_lines_between_imports_and_code() -> None:
+def test_respect_new_lines_between_imports_and_code():
     r"""
     Given: A file with two \n between imports and the code
     When: running autoimport on the file

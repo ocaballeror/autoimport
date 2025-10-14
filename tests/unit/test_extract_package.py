@@ -3,7 +3,7 @@
 from autoimport.model import extract_package_objects
 
 
-def test_extraction_returns_the_package_functions() -> None:
+def test_extraction_returns_the_package_functions():
     """
     Given: A package with functions.
     When: extract package objects is called
@@ -14,15 +14,13 @@ def test_extraction_returns_the_package_functions() -> None:
     desired_objects = {
         "fix_code": "from autoimport import fix_code",
         "fix_files": "from autoimport import fix_files",
-        "extract_package_objects": (
-            "from autoimport.model import extract_package_objects"
-        ),
+        "extract_package_objects": ("from autoimport.model import extract_package_objects"),
     }
     for object_name, object_import_string in desired_objects.items():
         assert result[object_name] == object_import_string
 
 
-def test_extraction_returns_the_package_classes() -> None:
+def test_extraction_returns_the_package_classes():
     """
     Given: A package with classes.
     When: extract package objects is called.
@@ -37,7 +35,7 @@ def test_extraction_returns_the_package_classes() -> None:
         assert result[object_name] == object_import_string
 
 
-def test_extraction_returns_the_package_dictionaries() -> None:
+def test_extraction_returns_the_package_dictionaries():
     """
     Given: A package with dictionaries.
     When: extract package objects is called.
@@ -52,7 +50,7 @@ def test_extraction_returns_the_package_dictionaries() -> None:
         assert result[object_name] == object_import_string
 
 
-def test_extraction_returns_empty_dict_if_package_is_not_importable() -> None:
+def test_extraction_returns_empty_dict_if_package_is_not_importable():
     """
     Given: Autoimport can't import the package.
     When: the extract package objects is called.
