@@ -659,7 +659,6 @@ def test_fix_autoimports_common_imports(import_key: str, import_statement: str):
     assert result == fixed_source
 
 
-@pytest.mark.skip("Import from __init__ is not implemented yet")
 def test_fix_autoimports_objects_defined_in_the_root_of_the_package():
     """
     Given:
@@ -698,7 +697,7 @@ def test_fix_autoimports_objects_defined_in___all__special_variable():
     )
     fixed_source = dedent(
         """\
-        from autoimport.services import fix_code
+        from autoimport import fix_code
 
 
         __all__ = ['fix_code']"""

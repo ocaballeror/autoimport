@@ -602,6 +602,38 @@ class SourceCode:  # noqa: R090
 
         return modules
 
+    def _list_module_objects(self, module_name: str) -> dict[str, list[str]]:
+        # TODO parse ast instead of importing
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:
+            return {}
+
+        objects: dict[str, list[str]] = {}
+        for obj_name, obj in inspect.getmembers(module):
+            if obj_name.startswith("_"):
+                continue
+            if not hasattr(obj, "__module__"):
+                continue
+
+            obj_module = obj.__module__
+            previous = None
+            while (
+                obj_module
+                and obj_module != previous
+                and obj_name in dir(importlib.import_module(obj_module))
+            ):
+                previous = obj_module
+                obj_module, _, _ = obj_module.rpartition(".")
+
+            if not obj_module or obj_name not in dir(importlib.import_module(obj_module)):
+                obj_module = previous
+
+            import_line = f"from {obj_module} import {obj_name}"
+            objects.setdefault(obj_name, []).append(import_line)
+
+        return objects
+
     def extract_package_objects(self, package_name: str) -> dict[str, list[str]]:
         cache_path = self.get_cache_path(package_name)
         module_files = self.find_package_files(package_name)
@@ -627,19 +659,9 @@ class SourceCode:  # noqa: R090
                 for obj in cached_objects[module_name]:
                     objects[obj.split()[-1]].append(obj)
             else:
-                try:
-                    module = importlib.import_module(module_name)
-                except Exception:
-                    continue
-
-                cached_objects[module_name] = []
-                for obj_name, obj in inspect.getmembers(module):
-                    if obj_name.startswith("_"):
-                        continue
-                    if hasattr(obj, "__module__"):
-                        import_line = f"from {obj.__module__} import {obj_name}"
-                        objects[obj_name].append(import_line)
-                        cached_objects[module_name].append(import_line)
+                for obj_name, import_lines in self._list_module_objects(module_name).items():
+                    objects[obj_name].extend(import_lines)
+                    cached_objects.setdefault(module_name, []).extend(import_lines)
 
         # Save cache
         cached_objects = {"objects": cached_objects, "mtimes": module_mtimes}
