@@ -365,24 +365,10 @@ init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
 warn_untyped_fields = true
+disable_error_code = "import-untyped"
 
 [[tool.mypy.overrides]]
 module = "tests.*"
 # Required to not have  error: Untyped decorator makes function on fixtures and
 # parametrize decorators
 disallow_untyped_decorators = false
-
-[[tool.mypy.overrides]]
-module = [
-    "goodconf",
-    "pytest",
-    "autoflake",
-    "pyflakes.*",
-    "isort",
-    "_io",
-    "pyprojroot",
-    "sh",
-    "virtualenv",
-    "xdg",
-]
-ignore_missing_imports = true
