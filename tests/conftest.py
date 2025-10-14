@@ -1,6 +1,7 @@
 """Store the classes and fixtures used throughout the tests."""
 
 import pathlib
+import shutil
 from pathlib import Path
 
 import pytest
@@ -25,3 +26,9 @@ def test_dir(tmp_path: Path) -> pathlib.Path:
         file_descriptor.write(file_contents)
 
     return test_dirs
+
+
+@pytest.fixture(autouse=True)
+def clear_pytest_cache():
+    yield  # let the test run
+    shutil.rmtree(".autoimport_cache", ignore_errors=True)
