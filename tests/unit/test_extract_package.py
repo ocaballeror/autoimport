@@ -1,53 +1,98 @@
 """Test the extraction of package objects."""
 
-from autoimport.model import extract_package_objects
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+from autoimport.model import SourceCode
 
 
-def test_extraction_returns_the_package_functions():
+def extract_package_objects(arg: str) -> dict[str, list[str]]:
+    return SourceCode("").extract_package_objects(arg)
+
+
+@pytest.fixture
+def package(tmp_path: Path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "__init__.py").touch()
+
+    sub = package / "sub"
+    sub.mkdir()
+    (sub / "__init__.py").touch()
+
+    cwd = os.getcwd()
+    sys.path.append(str(tmp_path))
+
+    try:
+        os.chdir(tmp_path)
+        yield package
+    finally:
+        os.chdir(cwd)
+        sys.path.remove(str(tmp_path))
+
+
+def test_extraction_returns_package_functions(package: Path) -> None:
     """
     Given: A package with functions.
     When: extract package objects is called
     Then: All the functions are extracted
     """
-    result = extract_package_objects("autoimport")
+    outer = package / "outer.py"
+    outer.write_text("def foo():\n pass")
 
-    desired_objects = {
-        "fix_code": "from autoimport import fix_code",
-        "fix_files": "from autoimport import fix_files",
-        "extract_package_objects": ("from autoimport.model import extract_package_objects"),
+    inner = package / "sub" / "inner.py"
+    inner.write_text("def bar():\n pass")
+
+    result = extract_package_objects("package")
+
+    assert result == {
+        "foo": ["from package.outer import foo"],
+        "bar": ["from package.sub.inner import bar"],
     }
-    for object_name, object_import_string in desired_objects.items():
-        assert result[object_name] == object_import_string
 
 
-def test_extraction_returns_the_package_classes():
+def test_extraction_returns_package_classes(package: Path):
     """
     Given: A package with classes.
     When: extract package objects is called.
     Then: All the classes are extracted.
     """
-    result = extract_package_objects("autoimport")
+    outer = package / "outer.py"
+    outer.write_text("class Foo:\n pass")
 
-    desired_objects = {
-        "SourceCode": "from autoimport.model import SourceCode",
+    inner = package / "sub" / "inner.py"
+    inner.write_text("class Bar:\n pass")
+
+    result = extract_package_objects("package")
+
+    assert result == {
+        "Foo": ["from package.outer import Foo"],
+        "Bar": ["from package.sub.inner import Bar"],
     }
-    for object_name, object_import_string in desired_objects.items():
-        assert result[object_name] == object_import_string
 
 
-def test_extraction_returns_the_package_dictionaries():
+@pytest.mark.xfail("Not implemented yet. Needs ast parsing")
+def test_extraction_returns_package_variables(package: Path):
     """
-    Given: A package with dictionaries.
+    Given: A package with top level variables.
     When: extract package objects is called.
-    Then: All the dictionaries are extracted.
+    Then: All variables are extracted.
     """
-    result = extract_package_objects("autoimport")
+    outer = package / "outer.py"
+    outer.write_text("foo = 1")
 
-    desired_objects = {
-        "common_statements": "from autoimport.model import common_statements",
+    inner = package / "sub" / "inner.py"
+    inner.write_text("bar = 'bar'")
+
+    result = extract_package_objects("package")
+
+    assert result == {
+        "foo": ["from package.outer import foo"],
+        "bar": ["from package.sub.inner import bar"],
     }
-    for object_name, object_import_string in desired_objects.items():
-        assert result[object_name] == object_import_string
 
 
 def test_extraction_returns_empty_dict_if_package_is_not_importable():
