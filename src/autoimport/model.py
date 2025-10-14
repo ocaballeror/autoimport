@@ -26,6 +26,7 @@ common_statements: dict[str, str] = {
     "MagicMock": "from unittest.mock import MagicMock",
     "Path": "from pathlib import Path",
     "StringIO": "from io import StringIO",
+    "TYPE_CHECKING": "from typing import TYPE_CHECKING",
     "UUID": "from uuid import UUID",
     "YAMLError": "from yaml import YAMLError",
     "abstractmethod": "from abc import abstractmethod",

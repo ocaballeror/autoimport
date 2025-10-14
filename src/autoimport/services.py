@@ -53,7 +53,7 @@ def fix_files(
 
 def fix_code(
     original_source_code: str,
-    filename: str,
+    filename: str = "<string>",
     config: dict[str, Any] | None = None,
     keep_unused_imports: bool = False,
 ) -> str:
