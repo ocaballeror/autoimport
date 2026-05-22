@@ -4,7 +4,6 @@ Classes and functions that connect the different domain model objects with the a
 and handlers to achieve the program's purpose.
 """
 
-import shutil
 import subprocess
 from _io import TextIOWrapper
 from typing import Any
@@ -13,12 +12,9 @@ from autoimport.model import SourceCode
 
 
 def isort(files: tuple[TextIOWrapper, ...]) -> None:
-    if shutil.which("ruff"):
-        subprocess.run(["ruff", "check", "--silent", "--fix", *(f.name for f in files)])
-        subprocess.run(["ruff", "format", "--silent", *(f.name for f in files)])
-
-    elif shutil.which("isort"):
-        subprocess.run(["isort", *(f.name for f in files)])
+    names = [f.name for f in files]
+    subprocess.run(["ruff", "check", "--select", "I001", "--fix", "--silent", *names])
+    subprocess.run(["ruff", "format", "--silent", *names])
 
 
 def fix_files(

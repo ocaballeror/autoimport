@@ -152,7 +152,6 @@ def test_pyproject_common_statements(runner: CliRunner, tmp_path: Path) -> None:
         """\
         from baz.qux import FooBar
 
-
         FooBar
         """
     )
@@ -206,14 +205,14 @@ def test_config_path_argument(runner: CliRunner, tmp_path: Path) -> None:
             False,
             True,
             True,
-            "from r import R\nfrom p import P",
+            "from p import P\nfrom r import R",
             id="local-and-pyproject",
         ),
         pytest.param(
             True,
             True,
             True,
-            "from g import G\nfrom r import R\nfrom p import P",
+            "from g import G\nfrom p import P\nfrom r import R",
             id="global-and-local-and-pyproject",
         ),
     ],
@@ -266,7 +265,7 @@ def test_global_and_local_config(
         result = runner.invoke(cli, args, env=env)
 
     assert result.exit_code == 0
-    assert code_path.read_text() == expected_imports + "\n\n" + original_code
+    assert code_path.read_text() == expected_imports + "\n" + original_code
 
 
 def test_global_and_local_config_precedence(runner: CliRunner, tmp_path: Path) -> None:
@@ -316,11 +315,11 @@ def test_global_and_local_config_precedence(runner: CliRunner, tmp_path: Path) -
     )
     expected_imports = dedent(
         """\
-        from pa import A
+        from g import G
         from lb import B
         from lc import C
         from ld import D
-        from g import G
+        from pa import A
         """
     )
     code_path.write_text(original_code)
@@ -344,4 +343,4 @@ def test_global_and_local_config_precedence(runner: CliRunner, tmp_path: Path) -
         result = runner.invoke(cli, args, env=env)
 
     assert result.exit_code == 0
-    assert code_path.read_text() == expected_imports + "\n" + original_code
+    assert code_path.read_text() == expected_imports + original_code

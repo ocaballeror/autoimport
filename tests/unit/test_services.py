@@ -1164,9 +1164,9 @@ def test_file_with_comment_in_from_import_that_will_dissapear():
 
 def test_file_with_import_as():
     """
-    Given: Code with an from x import y as z import statement
+    Given: Code with a re-export style import (y as y)
     When: Fix code is run.
-    Then: The unused import line is removed
+    Then: The import is preserved (ruff treats x as x as an intentional re-export)
     """
     source = dedent(
         """\
@@ -1176,7 +1176,7 @@ def test_file_with_import_as():
 
     result = fix_code(source)
 
-    assert result == "\n"
+    assert result == source
 
 
 def test_file_with_non_used_multiline_import():

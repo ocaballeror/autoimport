@@ -3,15 +3,16 @@
 import ast
 import hashlib
 import importlib.util
+import json
 import pickle
 import re
 import statistics
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
-import autoflake
-from pyflakes.messages import UndefinedExport, UndefinedName, UnusedImport
 from pyprojroot import here
 
 common_libraries = ("typing",)
@@ -305,18 +306,47 @@ class SourceCode:  # noqa: R090
 
     def _fix_flake_import_errors(self) -> None:
         """Fix python source code to correct missed or unused import statements."""
-        error_messages = autoflake.check(self._join_code())
-        fixed_packages = []
+        source = self._join_code()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
+            tmp.write(source)
+            tmp_path = Path(tmp.name)
 
-        for message in error_messages:
-            if isinstance(message, (UndefinedName, UndefinedExport)):
-                object_name = message.message_args[0]
-                if object_name not in fixed_packages:
-                    self._add_package(object_name)
-                    fixed_packages.append(object_name)
-            elif isinstance(message, UnusedImport) and not self.keep_unused_imports:
-                import_name = message.message_args[0]
-                self._remove_unused_imports(import_name)
+        try:
+            result = subprocess.run(
+                [
+                    "ruff",
+                    "check",
+                    "--select",
+                    "F401,F821,F822",
+                    "--output-format",
+                    "json",
+                    "--no-cache",
+                    str(tmp_path),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            messages = json.loads(result.stdout) if result.stdout else []
+        except Exception:
+            return
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        fixed_packages = []
+        for msg in messages:
+            code = msg["code"]
+            message = msg["message"]
+            if code in ("F821", "F822"):
+                match = re.search(r"`([^`]+)`", message)
+                if match:
+                    object_name = match.group(1)
+                    if object_name not in fixed_packages:
+                        self._add_package(object_name)
+                        fixed_packages.append(object_name)
+            elif code == "F401" and not self.keep_unused_imports:
+                match = re.search(r"`([^`]+)`", message)
+                if match:
+                    self._remove_unused_imports(match.group(1))
 
     def _add_package(self, object_name: str) -> None:
         """Add a package to the source code.
