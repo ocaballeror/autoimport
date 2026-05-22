@@ -359,7 +359,10 @@ class SourceCode:  # noqa: R090
 
     def _find_project_packages(self, where: Path | None = None) -> list[str]:
         if not where:
-            where = here()
+            try:
+                where = here()
+            except RuntimeError:
+                return []
 
         src = where / "src"
         if src.is_dir():
@@ -401,8 +404,13 @@ class SourceCode:  # noqa: R090
         Returns:
             import_string: String required to import the package.
         """
-        if str(here()) not in sys.path:
-            sys.path.append(str(here()))
+        try:
+            root = here()
+        except RuntimeError:
+            return None
+
+        if str(root) not in sys.path:
+            sys.path.append(str(root))
 
         import_lines = [
             line
