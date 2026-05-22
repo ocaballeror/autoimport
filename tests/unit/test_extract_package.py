@@ -74,7 +74,6 @@ def test_extraction_returns_package_classes(package: Path):
     }
 
 
-@pytest.mark.xfail(reason="Not implemented yet. Needs ast parsing")
 def test_extraction_returns_package_variables(package: Path):
     """
     Given: A package with top level variables.

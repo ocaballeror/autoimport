@@ -610,17 +610,28 @@ class SourceCode:  # noqa: R090
 
     @staticmethod
     def _parse_module_definitions(file: Path) -> set[str]:
-        """Return top-level function and class names defined in file (AST, no import)."""
+        """Return all importable top-level names defined in file (AST, no import)."""
         try:
             tree = ast.parse(file.read_text())
         except Exception:
             return set()
-        return {
-            node.name
-            for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-            and not node.name.startswith("_")
-        }
+
+        names: set[str] = set()
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if not node.name.startswith("_"):
+                    names.add(node.name)
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and not target.id.startswith("_"):
+                        names.add(target.id)
+            elif isinstance(node, ast.AnnAssign):
+                if isinstance(node.target, ast.Name) and not node.target.id.startswith("_"):
+                    names.add(node.target.id)
+            elif isinstance(node, ast.TypeAlias):
+                if isinstance(node.name, ast.Name) and not node.name.id.startswith("_"):
+                    names.add(node.name.id)
+        return names
 
     @staticmethod
     def _parse_init_reexports(file: Path, init_module: str) -> dict[str, str]:
