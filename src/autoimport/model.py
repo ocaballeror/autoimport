@@ -409,33 +409,33 @@ class SourceCode:  # noqa: R090
         if str(root) not in sys.path:
             sys.path.append(str(root))
 
-        import_lines = [
-            line
-            for package in self._find_project_packages()
-            for object_name, candidates in self.extract_package_objects(package).items()
-            if object_name == name
-            for line in candidates
-        ]
+        candidates: list[tuple[str, Path]] = []
+        for package in self._find_project_packages():
+            objects, definition_files = self._extract_package_objects_with_files(package)
+            if name in objects:
+                for line, def_file in zip(objects[name], definition_files.get(name, [])):
+                    candidates.append((line, def_file))
 
-        if not import_lines:
+        if not candidates:
             return None
 
+        import_lines = [line for line, _ in candidates]
         if len(set(import_lines)) == 1:
             return import_lines[0]
 
-        return self._pick_best_candidate(name, import_lines)
+        return self._pick_best_candidate(name, candidates)
 
-    def _pick_best_candidate(self, name: str, import_lines: list[str]) -> str:
+    def _pick_best_candidate(self, name: str, candidates: list[tuple[str, Path]]) -> str:
+        import_lines = [line for line, _ in candidates]
         usage = self._find_usage(name)
         if not usage:
             return statistics.mode(import_lines)
 
-        definition_files = getattr(self, "_definition_files", {}).get(name, [])
         matching_candidates = []
-        for candidate, def_file in zip(import_lines, definition_files):
+        for line, def_file in candidates:
             attrs = self._parse_class_attributes(def_file, name)
             if all(attr in attrs for attr in usage):
-                matching_candidates.append(candidate)
+                matching_candidates.append(line)
 
         if matching_candidates:
             return statistics.mode(matching_candidates)
@@ -695,11 +695,17 @@ class SourceCode:  # noqa: R090
         return [".".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)]
 
     def extract_package_objects(self, package_name: str) -> dict[str, list[str]]:
+        objects, self._definition_files = self._extract_package_objects_with_files(package_name)
+        return objects
+
+    def _extract_package_objects_with_files(
+        self, package_name: str
+    ) -> tuple[dict[str, list[str]], dict[str, list[Path]]]:
         cache_path = self.get_cache_path(package_name)
         all_files = self._iter_package_files(package_name)
 
         if not all_files:
-            return {}
+            return {}, {}
 
         cached_module_defs: dict[str, Any] = {}
         cached_init_reexports: dict[str, Any] = {}
