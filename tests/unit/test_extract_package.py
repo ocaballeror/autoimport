@@ -1,20 +1,24 @@
 """Test the extraction of package objects."""
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
 import pytest
 
-from autoimport.model import SourceCode
+from autoimport.model import PackageFinder
 
 
-def extract_package_objects(arg: str) -> dict[str, list[str]]:
-    return SourceCode("").extract_package_objects(arg)
+def extract_package_objects(package_name: str) -> dict[str, list[str]]:
+    """Return importable names from a package."""
+    return PackageFinder().extract_package_objects(package_name)
 
 
 @pytest.fixture
 def package(tmp_path: Path):
+    (tmp_path / "pyproject.toml").touch()
+
     package = tmp_path / "package"
     package.mkdir()
     (package / "__init__.py").touch()
@@ -32,6 +36,7 @@ def package(tmp_path: Path):
     finally:
         os.chdir(cwd)
         sys.path.remove(str(tmp_path))
+        shutil.rmtree(".autoimport_cache", ignore_errors=True)
 
 
 def test_extraction_returns_package_functions(package: Path) -> None:
@@ -161,10 +166,7 @@ def test_extraction_excludes_private_names(package: Path) -> None:
     Then: Names starting with _ are not included.
     """
     (package / "things.py").write_text(
-        "def _private(): pass\n"
-        "class _PrivateClass: pass\n"
-        "_private_var = 1\n"
-        "def public(): pass\n"
+        "def _private(): pass\nclass _PrivateClass: pass\n_private_var = 1\ndef public(): pass\n"
     )
 
     result = extract_package_objects("package")
@@ -245,96 +247,77 @@ def test_extraction_syntax_error_in_module_is_skipped(package: Path) -> None:
     assert "broken" not in str(result)
 
 
-# ---------------------------------------------------------------------------
-# _pick_best_candidate
-# ---------------------------------------------------------------------------
-
-
-def test_pick_best_candidate_no_usage_returns_mode(tmp_path: Path) -> None:
+def test_find_in_ours_no_usage_returns_mode(package: Path) -> None:
     """
     Given: Multiple candidates but the source code gives no usage clues.
-    When: _pick_best_candidate is called.
+    When: _find_package_in_our_project is called.
     Then: The most common candidate (mode) is returned.
     """
-    file_a = tmp_path / "a.py"
+    file_a = package / "a.py"
     file_a.write_text("class Thing:\n pass")
-    file_b = tmp_path / "b.py"
+    file_b = package / "b.py"
     file_b.write_text("class Thing:\n pass")
 
-    # Source gives no usage hint (Thing is only referenced as a name, not called and used)
-    sc = SourceCode("x = Thing")
-    candidates = [
-        ("from pkg.a import Thing", file_a),
-        ("from pkg.a import Thing", file_a),  # repeated so mode favours pkg.a
-        ("from pkg.b import Thing", file_b),
-    ]
+    file_c = Path("c.py")
+    file_c.write_text("x = Thing")
 
-    result = sc._pick_best_candidate("Thing", candidates)
+    sc = PackageFinder()
 
-    assert result == "from pkg.a import Thing"
+    result = sc._find_package_in_our_project("Thing", file_c)
+    assert result == "from package.a import Thing"
 
 
-def test_pick_best_candidate_selects_by_method_match(tmp_path: Path) -> None:
+def test_find_in_ours_selects_by_method_match(package: Path) -> None:
     """
     Given: Two classes with the same name; source calls methods only one of them has.
-    When: _pick_best_candidate is called.
+    When: _find_package_in_our_project is called.
     Then: The candidate whose class declares the used methods is selected.
     """
-    file_a = tmp_path / "a.py"
+    file_a = package / "a.py"
     file_a.write_text("class Conn:\n def connect(self): pass\n def query(self): pass\n")
-    file_b = tmp_path / "b.py"
+    file_b = package / "b.py"
     file_b.write_text("class Conn:\n def save(self): pass\n def load(self): pass\n")
 
-    source = "db = Conn()\ndb.connect()\ndb.query()\n"
-    sc = SourceCode(source)
-    candidates = [
-        ("from pkg.a import Conn", file_a),
-        ("from pkg.b import Conn", file_b),
-    ]
+    file_c = Path("c.py")
+    file_c.write_text("db = Conn()\ndb.connect()\ndb.query()\n")
 
-    result = sc._pick_best_candidate("Conn", candidates)
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("Conn", file_c)
 
-    assert result == "from pkg.a import Conn"
+    assert result == "from package.a import Conn"
 
 
-def test_pick_best_candidate_falls_back_to_mode_when_no_match(tmp_path: Path) -> None:
+def test_find_in_ours_falls_back_to_mode_when_no_match(package: Path) -> None:
     """
     Given: Source uses methods that no candidate's class declares.
-    When: _pick_best_candidate is called.
+    When: _find_package_in_our_project is called.
     Then: Falls back to the most common candidate.
     """
-    file_a = tmp_path / "a.py"
+    file_a = package / "a.py"
     file_a.write_text("class Widget:\n def draw(self): pass\n")
-    file_b = tmp_path / "b.py"
+    file_b = package / "b.py"
     file_b.write_text("class Widget:\n def draw(self): pass\n")
 
-    source = "w = Widget()\nw.fly()\n"  # .fly() is in neither class
-    sc = SourceCode(source)
-    candidates = [
-        ("from pkg.b import Widget", file_b),
-        ("from pkg.b import Widget", file_b),
-        ("from pkg.a import Widget", file_a),
-    ]
+    file_c = Path("c.py")
+    file_c.write_text("w = Widget()\nw.fly()\n")  # .fly() is in neither class
 
-    result = sc._pick_best_candidate("Widget", candidates)
+    sc = PackageFinder()
 
-    assert result == "from pkg.b import Widget"
+    result = sc._find_package_in_our_project("Widget", file_c)
+    assert result == "from package.a import Widget"
 
 
-def test_pick_best_candidate_matches_self_instance_attributes(tmp_path: Path) -> None:
+def test_find_in_ours_matches_self_instance_attributes(package: Path) -> None:
     """
     Given: Class sets instance attributes via self.x = ... in __init__.
-    When: Source uses those attributes and _pick_best_candidate is called.
+    When: Source uses those attributes and _find_package_in_our_project is called.
     Then: The candidate with matching instance attributes is chosen.
     """
-    file_a = tmp_path / "a.py"
+    file_a = package / "a.py"
     file_a.write_text(
-        "class Config:\n"
-        " def __init__(self):\n"
-        "  self.host = 'localhost'\n"
-        "  self.port = 5432\n"
+        "class Config:\n def __init__(self):\n  self.host = 'localhost'\n  self.port = 5432\n"
     )
-    file_b = tmp_path / "b.py"
+    file_b = package / "b.py"
     file_b.write_text(
         "class Config:\n"
         " def __init__(self):\n"
@@ -342,98 +325,79 @@ def test_pick_best_candidate_matches_self_instance_attributes(tmp_path: Path) ->
         "  self.password = 'secret'\n"
     )
 
-    source = "cfg = Config()\ncfg.host\ncfg.port\n"
-    sc = SourceCode(source)
-    candidates = [
-        ("from pkg.a import Config", file_a),
-        ("from pkg.b import Config", file_b),
-    ]
+    file_c = Path("c.py")
+    file_c.write_text("cfg = Config()\ncfg.host\ncfg.port\n")
 
-    result = sc._pick_best_candidate("Config", candidates)
-
-    assert result == "from pkg.a import Config"
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("Config", file_c)
+    assert result == "from package.a import Config"
 
 
-def test_pick_best_candidate_matches_annotated_class_attributes(tmp_path: Path) -> None:
+def test_find_in_ours_matches_annotated_class_attributes(package: Path) -> None:
     """
     Given: Class declares attributes via annotation (x: int).
-    When: Source uses those attributes and _pick_best_candidate is called.
+    When: Source uses those attributes and _find_package_in_our_project is called.
     Then: The candidate with matching annotated attributes is chosen.
     """
-    file_a = tmp_path / "a.py"
+    file_a = package / "a.py"
     file_a.write_text("class Record:\n name: str\n value: int\n")
-    file_b = tmp_path / "b.py"
+    file_b = package / "b.py"
     file_b.write_text("class Record:\n title: str\n count: int\n")
 
-    source = "r = Record()\nr.name\nr.value\n"
-    sc = SourceCode(source)
-    candidates = [
-        ("from pkg.a import Record", file_a),
-        ("from pkg.b import Record", file_b),
-    ]
+    file_c = Path("c.py")
+    file_c.write_text("r = Record()\nr.name\nr.value\n")
 
-    result = sc._pick_best_candidate("Record", candidates)
-
-    assert result == "from pkg.a import Record"
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("Record", file_c)
+    assert result == "from package.a import Record"
 
 
-def test_pick_best_candidate_matches_annotated_self_assignments(tmp_path: Path) -> None:
+def test_find_in_ours_matches_annotated_self_assignments(package: Path) -> None:
     """
     Given: Class sets instance attributes via annotated assignments (self.x: int = ...).
-    When: Source uses those attributes and _pick_best_candidate is called.
+    When: Source uses those attributes and _find_package_in_our_project is called.
     Then: The candidate with matching attributes is chosen.
     """
-    file_a = tmp_path / "a.py"
+    file_a = package / "a.py"
     file_a.write_text(
-        "class Repo:\n"
-        " def __init__(self):\n"
-        "  self.url: str = ''\n"
-        "  self.branch: str = 'main'\n"
+        "class Repo:\n def __init__(self):\n  self.url: str = ''\n  self.branch: str = 'main'\n"
     )
-    file_b = tmp_path / "b.py"
+    file_b = package / "b.py"
     file_b.write_text(
-        "class Repo:\n"
-        " def __init__(self):\n"
-        "  self.name: str = ''\n"
-        "  self.owner: str = ''\n"
+        "class Repo:\n def __init__(self):\n  self.name: str = ''\n  self.owner: str = ''\n"
     )
 
-    source = "r = Repo()\nr.url\nr.branch\n"
-    sc = SourceCode(source)
-    candidates = [
-        ("from pkg.a import Repo", file_a),
-        ("from pkg.b import Repo", file_b),
-    ]
+    file_c = Path("c.py")
+    file_c.write_text("r = Repo()\nr.url\nr.branch\n")
 
-    result = sc._pick_best_candidate("Repo", candidates)
-
-    assert result == "from pkg.a import Repo"
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("Repo", file_c)
+    assert result == "from package.a import Repo"
 
 
-def test_parse_class_attributes_returns_empty_set_when_class_not_found(tmp_path: Path) -> None:
+def test_parse_class_attributes_returns_empty_set_when_class_not_found(package: Path) -> None:
     """
     Given: A file that does not contain the requested class.
     When: _parse_class_attributes is called.
     Then: An empty set is returned.
     """
-    f = tmp_path / "mod.py"
+    f = package / "mod.py"
     f.write_text("class Other:\n pass\n")
 
-    result = SourceCode._parse_class_attributes(f, "Missing")
-
+    result = PackageFinder._parse_class_attributes("Missing", f)
     assert result == set()
 
 
-def test_parse_class_attributes_handles_syntax_error(tmp_path: Path) -> None:
+def test_parse_class_attributes_handles_syntax_error(package: Path) -> None:
     """
     Given: A file with a syntax error.
     When: _parse_class_attributes is called.
     Then: An empty set is returned without raising.
     """
-    f = tmp_path / "bad.py"
+    f = package / "bad.py"
     f.write_text("class (: pass")
 
-    result = SourceCode._parse_class_attributes(f, "Anything")
+    result = PackageFinder._parse_class_attributes("Anything", f)
 
     assert result == set()
 

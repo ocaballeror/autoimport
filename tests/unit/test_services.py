@@ -1,11 +1,19 @@
 """Tests the service layer."""
 
+from tempfile import NamedTemporaryFile
 from textwrap import dedent
 
 import pytest
 
 from autoimport.model import common_statements
-from autoimport.services import fix_code, fix_files
+from autoimport.services import fix_files
+
+
+def fix_code(source: str):
+    with NamedTemporaryFile("w+") as tmp:
+        tmp.write(source)
+        fix_files(tmp)
+        return tmp.read()
 
 
 def test_fix_code_adds_missing_import():
@@ -948,6 +956,39 @@ def test_fix_doesnt_fail_on_empty_file():
     result = fix_code(source)
 
     assert result == source
+
+
+def test_fix_not_remove_unused_imports():
+    """
+    Given: Code with imports, few being used, others not being used.
+    When: Fix code is run.
+    Then: Missing imports added, unused imports not removed.
+    """
+    source = dedent(
+        """\
+        import gzip
+        import hashlib
+
+        csv_writer = csv.DictWriter(filename, fieldnames=["name", "age"])
+        gzip.open(filename, 'wb')
+        """
+    )
+    desired_source = dedent(
+        """\
+        import gzip
+        import hashlib
+
+        import csv
+
+
+        csv_writer = csv.DictWriter(filename, fieldnames=["name", "age"])
+        gzip.open(filename, 'wb')
+        """
+    )
+
+    result = fix_code(source, keep_unused_imports=True)
+
+    assert result == desired_source
 
 
 def test_file_that_only_has_unused_imports():

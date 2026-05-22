@@ -1,72 +1,101 @@
-"""Define all the orchestration functionality required by the program to work.
+"""Define all the orchestration functionality required by the program to work."""
 
-Classes and functions that connect the different domain model objects with the adapters
-and handlers to achieve the program's purpose.
-"""
-
+import json
+import re
 import subprocess
-from _io import TextIOWrapper
+from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
-from autoimport.model import SourceCode
+from autoimport.model import PackageFinder
 
 
-def isort(files: tuple[TextIOWrapper, ...]) -> None:
-    names = [f.name for f in files]
-    subprocess.run(["ruff", "check", "--select", "I001", "--fix", "--silent", *names])
-    subprocess.run(["ruff", "format", "--silent", *names])
+def _find_header_end(lines: list[str]) -> int:
+    """Return the line index after any shebang, leading comments, and module docstring."""
+    i = 0
+    n = len(lines)
+
+    while i < n and (lines[i].startswith("#") or not lines[i].strip()):
+        i += 1
+
+    if i < n:
+        stripped = lines[i].strip()
+        if stripped.startswith('"""') or stripped.startswith("'''"):
+            quote = stripped[:3]
+            rest = stripped[3:]
+            if rest.endswith(quote) and len(rest) >= 3:
+                i += 1
+            else:
+                i += 1
+                while i < n and quote not in lines[i]:
+                    i += 1
+                i += 1
+
+    return i
+
+
+def insert_imports(file: Path, imports: list[str]) -> str:
+    """Insert import statements after the file header (shebang, comments, docstring)."""
+    source = file.read_text()
+    lines = source.splitlines(keepends=True)
+    i = _find_header_end(lines)
+
+    import_block = "\n".join(imports) + "\n"
+    before = "".join(lines[:i])
+    rest = "".join(lines[i:])
+
+    if before and not before.endswith("\n\n"):
+        import_block = "\n" + import_block
+
+    source = before + import_block + rest
+    file.write_text(source)
 
 
 def fix_files(
-    files: tuple[TextIOWrapper, ...],
+    files: tuple[Path, ...],
     config: dict[str, Any] | None = None,
 ) -> None:
-    """Fix the python source code of a list of files.
+    result = subprocess.run(
+        [
+            "ruff",
+            "check",
+            "--select",
+            "F821,F822",
+            "--output-format",
+            "json",
+            *files,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    messages = json.loads(result.stdout) if result.stdout else []
 
-    If the input is taken from stdin, it will output the value to stdout.
-
-    Args:
-        files: List of files to fix.
-
-    Returns:
-        Fixed code retrieved from stdin or None.
-    """
-    for file_wrapper in files:
-        source = file_wrapper.read()
-        fixed_source = fix_code(source, file_wrapper.name, config)
-
-        if fixed_source == source and file_wrapper.name != "<stdin>":
+    packages_missing: set[str] = set()
+    files_missing: dict[Path, set[str]] = defaultdict(set)
+    for msg in messages:
+        if msg["code"] not in ("F821", "F822"):
+            continue
+        match = re.search(r"`([^`]+)`", msg["message"])
+        if not match:
             continue
 
-        file_wrapper.seek(0)
-        file_wrapper.write(fixed_source)
-        file_wrapper.truncate()
-        file_wrapper.close()
+        fname = Path(msg["filename"])
+        name = match.group(1)
 
-    isort(files)
+        packages_missing.add(name)
+        files_missing[fname].add(name)
 
+    finder = PackageFinder(config)
+    finder.index_packages(packages_missing)
 
-def fix_code(
-    original_source_code: str,
-    filename: str = "<string>",
-    config: dict[str, Any] | None = None,
-) -> str:
-    """Fix python source code to correct import statements.
+    for fname, names in files_missing.items():
+        imports_to_add = []
+        for pkg in names:
+            import_stmt = finder.find_package(pkg, fname)
+            if import_stmt:
+                imports_to_add.append(import_stmt)
 
-    It corrects these errors:
+        insert_imports(fname, imports_to_add)
 
-        * Add missed import statements.
-        * Remove unused import statements.
-        * Move import statements to the top.
-
-    Args:
-        original_source_code: Source code to be corrected.
-
-    Returns:
-        Corrected source code.
-    """
-    return SourceCode(
-        original_source_code,
-        filename=filename,
-        config=config,
-    ).fix()
+    subprocess.check_call(["ruff", "check", "--select", "I001,F401", "--fix", "--silent", *files])
+    subprocess.check_call(["ruff", "format", "--silent", *files_missing])

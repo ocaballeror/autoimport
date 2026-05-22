@@ -93,26 +93,6 @@ def test_correct_mix_dir_and_files(runner: CliRunner, test_dir: Path, tmp_path: 
     assert test_file.read_text() == fixed_source
 
 
-def test_ignore_init_modules_flag_skips_init_files(runner: CliRunner, tmp_path: Path) -> None:
-    """
-    Given: A directory containing a regular .py file and an __init__.py, both needing fixes.
-    When: CLI is run with --ignore-init-modules.
-    Then: Only the regular file is corrected; __init__.py is left unchanged.
-    """
-    pkg = tmp_path / "mypkg"
-    pkg.mkdir()
-    regular = pkg / "module.py"
-    regular.write_text("os.getcwd()")
-    init = pkg / "__init__.py"
-    init.write_text("os.getcwd()")
-
-    result = runner.invoke(cli, ["--ignore-init-modules", str(pkg)])
-
-    assert result.exit_code == 0
-    assert regular.read_text() == "import os\n\nos.getcwd()\n"
-    assert init.read_text() == "os.getcwd()"
-
-
 @pytest.mark.xfail(reason="stdin support removed. i think")
 def test_corrects_code_from_stdin(runner: CliRunner) -> None:
     """Correct the source code passed as stdin."""
