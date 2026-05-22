@@ -20,7 +20,6 @@ def isort(files: tuple[TextIOWrapper, ...]) -> None:
 def fix_files(
     files: tuple[TextIOWrapper, ...],
     config: dict[str, Any] | None = None,
-    keep_unused_imports: bool = False,
 ) -> None:
     """Fix the python source code of a list of files.
 
@@ -34,7 +33,7 @@ def fix_files(
     """
     for file_wrapper in files:
         source = file_wrapper.read()
-        fixed_source = fix_code(source, file_wrapper.name, config, keep_unused_imports)
+        fixed_source = fix_code(source, file_wrapper.name, config)
 
         if fixed_source == source and file_wrapper.name != "<stdin>":
             continue
@@ -51,7 +50,6 @@ def fix_code(
     original_source_code: str,
     filename: str = "<string>",
     config: dict[str, Any] | None = None,
-    keep_unused_imports: bool = False,
 ) -> str:
     """Fix python source code to correct import statements.
 
@@ -63,7 +61,6 @@ def fix_code(
 
     Args:
         original_source_code: Source code to be corrected.
-        keep_unused_imports: If true, unused imports are retained.
 
     Returns:
         Corrected source code.
@@ -72,5 +69,4 @@ def fix_code(
         original_source_code,
         filename=filename,
         config=config,
-        keep_unused_imports=keep_unused_imports,
     ).fix()

@@ -53,7 +53,6 @@ class SourceCode:  # noqa: R090
         source_code: str,
         filename: str = "<string>",
         config: dict[str, Any] | None = None,
-        keep_unused_imports: bool = False,
     ) -> None:
         """Initialize the object."""
         self.header: list[str] = []
@@ -64,7 +63,6 @@ class SourceCode:  # noqa: R090
         self.config: dict[str, Any] = config if config else {}
         self._trailing_newline = False
         self._split_code(source_code)
-        self.keep_unused_imports = keep_unused_imports
         self.cache_dir = Path(".autoimport_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -788,9 +786,7 @@ class SourceCode:  # noqa: R090
 
         if dirty:
             cache_path.write_bytes(
-                pickle.dumps(
-                    {"module_defs": new_module_defs, "init_reexports": new_init_reexports}
-                )
+                pickle.dumps({"module_defs": new_module_defs, "init_reexports": new_init_reexports})
             )
 
         objects: dict[str, list[str]] = {}
