@@ -30,6 +30,7 @@ common_statements: dict[str, str] = {
     "UUID": "from uuid import UUID",
     "YAMLError": "from yaml import YAMLError",
     "abstractmethod": "from abc import abstractmethod",
+    "assert_never": "from typing import assert_never",
     "config": "from decouple import config",
     "datetime": "from datetime import datetime",
     "logger": "from loguru import logger",
@@ -38,6 +39,7 @@ common_statements: dict[str, str] = {
     "timedelta": "from datetime import datetime",
     "timezone": "from datetime import timezone",
     "tz": "from dateutil import tz",
+    "CustomContext": "from link_workflow.graphql.context import CustomContext",
 }
 
 
