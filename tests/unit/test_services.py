@@ -5,7 +5,7 @@ from textwrap import dedent
 import pytest
 
 from autoimport.model import common_statements
-from autoimport.services import fix_code
+from autoimport.services import fix_code, fix_files
 
 
 def test_fix_code_adds_missing_import():
@@ -1264,3 +1264,19 @@ def test_respect_new_lines_between_imports_and_code():
     result = fix_code(source)
 
     assert result == source
+
+
+def test_fix_files_skips_file_that_needs_no_changes(tmp_path) -> None:
+    """
+    Given: A file whose source is already correct (no missing or unused imports).
+    When: fix_files is called.
+    Then: The file content is not rewritten (the skip branch in fix_files is taken).
+    """
+    source = "import os\n\nos.getcwd()\n"
+    test_file = tmp_path / "clean.py"
+    test_file.write_text(source)
+
+    with test_file.open("r+") as f:
+        fix_files((f,))
+
+    assert test_file.read_text() == source

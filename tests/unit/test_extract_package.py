@@ -375,3 +375,108 @@ def test_pick_best_candidate_matches_annotated_class_attributes(tmp_path: Path) 
     result = sc._pick_best_candidate("Record", candidates)
 
     assert result == "from pkg.a import Record"
+
+
+def test_pick_best_candidate_matches_annotated_self_assignments(tmp_path: Path) -> None:
+    """
+    Given: Class sets instance attributes via annotated assignments (self.x: int = ...).
+    When: Source uses those attributes and _pick_best_candidate is called.
+    Then: The candidate with matching attributes is chosen.
+    """
+    file_a = tmp_path / "a.py"
+    file_a.write_text(
+        "class Repo:\n"
+        " def __init__(self):\n"
+        "  self.url: str = ''\n"
+        "  self.branch: str = 'main'\n"
+    )
+    file_b = tmp_path / "b.py"
+    file_b.write_text(
+        "class Repo:\n"
+        " def __init__(self):\n"
+        "  self.name: str = ''\n"
+        "  self.owner: str = ''\n"
+    )
+
+    source = "r = Repo()\nr.url\nr.branch\n"
+    sc = SourceCode(source)
+    candidates = [
+        ("from pkg.a import Repo", file_a),
+        ("from pkg.b import Repo", file_b),
+    ]
+
+    result = sc._pick_best_candidate("Repo", candidates)
+
+    assert result == "from pkg.a import Repo"
+
+
+def test_parse_class_attributes_returns_empty_set_when_class_not_found(tmp_path: Path) -> None:
+    """
+    Given: A file that does not contain the requested class.
+    When: _parse_class_attributes is called.
+    Then: An empty set is returned.
+    """
+    f = tmp_path / "mod.py"
+    f.write_text("class Other:\n pass\n")
+
+    result = SourceCode._parse_class_attributes(f, "Missing")
+
+    assert result == set()
+
+
+def test_parse_class_attributes_handles_syntax_error(tmp_path: Path) -> None:
+    """
+    Given: A file with a syntax error.
+    When: _parse_class_attributes is called.
+    Then: An empty set is returned without raising.
+    """
+    f = tmp_path / "bad.py"
+    f.write_text("class (: pass")
+
+    result = SourceCode._parse_class_attributes(f, "Anything")
+
+    assert result == set()
+
+
+def test_extraction_type_alias_is_included(package: Path) -> None:
+    """
+    Given: A module with a type alias (PEP 695 syntax).
+    When: extract package objects is called.
+    Then: The alias name is included in results.
+    """
+    (package / "types.py").write_text("type Vector = list[float]\n")
+
+    result = extract_package_objects("package")
+
+    assert "Vector" in result
+    assert result["Vector"] == ["from package.types import Vector"]
+
+
+def test_extraction_syntax_error_in_init_is_skipped(package: Path) -> None:
+    """
+    Given: A sub-package whose __init__.py has a syntax error.
+    When: extract package objects is called.
+    Then: The sub-package's __init__ re-exports are treated as empty (no crash).
+    """
+    (package / "sub" / "inner.py").write_text("class Inner:\n pass")
+    (package / "sub" / "__init__.py").write_text("from (bad syntax")
+
+    result = extract_package_objects("package")
+
+    # Inner is still found at its defining module; broken __init__ means no promotion
+    assert result == {"Inner": ["from package.sub.inner import Inner"]}
+
+
+def test_extraction_uses_cache_on_second_call(package: Path) -> None:
+    """
+    Given: extract_package_objects has been called once (cache written).
+    When: The same package is extracted again without any file changes.
+    Then: The result is identical (cache hit path exercised).
+    """
+    (package / "cached.py").write_text("def cached_func(): pass")
+
+    first = extract_package_objects("package")
+    second = extract_package_objects("package")
+
+    assert first == second
+    assert "cached_func" in second
