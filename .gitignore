@@ -145,3 +145,5 @@ dmypy.json
 # Dmypy daemons
 .precommit-mypy
 .pylsp-dmypy
+
+.autoimport_cache
