@@ -7,4 +7,4 @@ Functions:
 
 from .services import fix_files
 
-__all__: list[str] = ["fix_code", "fix_files"]
+__all__: list[str] = ["fix_files"]

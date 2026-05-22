@@ -41,10 +41,7 @@ def cli(
         package_name="autoimport", source_files=config_files, merge_configs=True
     ).values
 
-    assert isinstance(files, tuple)
-    assert all(isinstance(p, Path) for p in files)
-
-    services.fix_files(files, config)
+    services.fix_files(list(files), config)
 
 
 if __name__ == "__main__":  # pragma: no cover

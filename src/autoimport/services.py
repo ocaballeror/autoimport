@@ -51,10 +51,8 @@ def insert_imports(file: Path, imports: list[str]) -> str:
     file.write_text(source)
 
 
-def fix_files(
-    files: tuple[Path, ...],
-    config: dict[str, Any] | None = None,
-) -> None:
+def fix_files(files: list[Path], config: dict[str, Any] | None = None) -> None:
+    fnames = list(map(str, files))
     result = subprocess.run(
         [
             "ruff",
@@ -63,7 +61,7 @@ def fix_files(
             "F821,F822",
             "--output-format",
             "json",
-            *files,
+            *fnames,
         ],
         capture_output=True,
         text=True,
@@ -97,5 +95,8 @@ def fix_files(
 
         insert_imports(fname, imports_to_add)
 
-    subprocess.check_call(["ruff", "check", "--select", "I001,F401", "--fix", "--silent", *files])
-    subprocess.check_call(["ruff", "format", "--silent", *files_missing])
+    subprocess.check_call(["ruff", "format", "--silent", *fnames])
+    subprocess.check_call(
+        ["ruff", "check", "--exit-zero", "--silent", "--select", "I001,F401,E402", "--fix", *fnames]
+    )
+    subprocess.check_call(["ruff", "format", "--silent", *fnames])

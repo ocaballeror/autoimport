@@ -138,7 +138,7 @@ class PackageFinder:
         if not candidates:
             return None
         elif len(candidates) == 1:
-            return list(candidates)[0]
+            return list(candidates)[0][0]
 
         usage = self._find_usage(file, name)
         if not usage:
