@@ -139,7 +139,6 @@ def test_pyproject_common_statements(runner: CliRunner, tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.skip("Until https://github.com/dbatten5/maison/issues/141 is fixed")
 def test_config_path_argument(runner: CliRunner, tmp_path: Path) -> None:
     """Allow common_statements to be defined in pyproject.toml"""
     config_dir = tmp_path / "config"
@@ -164,7 +163,6 @@ def test_config_path_argument(runner: CliRunner, tmp_path: Path) -> None:
     assert test_file.read_text() == dedent(
         """\
         from baz.qux import FooBar
-
 
         FooBar
         """
