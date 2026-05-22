@@ -1,13 +1,12 @@
 """Define the entities."""
 
+import ast
 import hashlib
 import importlib.util
-import inspect
 import pickle
 import re
 import statistics
 import sys
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -375,8 +374,6 @@ class SourceCode:  # noqa: R090
         ]
 
     def _find_usage(self, target: str) -> list[str]:
-        import ast
-
         mo = ast.parse(self._join_code())
         track = None
         uses = []
@@ -433,14 +430,11 @@ class SourceCode:  # noqa: R090
         if not usage:
             return statistics.mode(import_lines)
 
+        definition_files = getattr(self, "_definition_files", {}).get(name, [])
         matching_candidates = []
-        for candidate in import_lines:
-            _, path, _, _ = candidate.split()
-            module = importlib.import_module(path)
-            object = getattr(module, name)
-            if not object:
-                continue
-            if all(hasattr(object, attr) for attr in usage):
+        for candidate, def_file in zip(import_lines, definition_files):
+            attrs = self._parse_class_attributes(def_file, name)
+            if all(attr in attrs for attr in usage):
                 matching_candidates.append(candidate)
 
         if matching_candidates:
@@ -586,95 +580,179 @@ class SourceCode:  # noqa: R090
         hash_name = hashlib.sha256(package_name.encode()).hexdigest()
         return self.cache_dir / f"{hash_name}.pkl"
 
-    def find_package_files(self, package_name: str) -> dict[str, Path]:
-        """
-        Recursively find all .py files in the package directory without importing.
-        Returns a mapping: module_name -> file_path
-        """
+    def _iter_package_files(self, package_name: str) -> dict[str, tuple[Path, bool]]:
+        """Return {module_name: (file_path, is_init)} for every .py file in the package."""
         parts = package_name.split(".")
         base_path = None
+        path_entry_path = None
         for path_entry in sys.path:
             candidate = Path(path_entry, *parts)
             if candidate.is_dir():
                 base_path = candidate
+                path_entry_path = Path(path_entry)
                 break
         if base_path is None:
             return {}
 
-        modules = {}
+        result: dict[str, tuple[Path, bool]] = {}
         for py_file in base_path.rglob("*.py"):
-            if py_file.name.startswith("_"):
-                continue
-            # Convert path to module name
-            rel_path = py_file.relative_to(Path(path_entry))
-            mod_name = ".".join(rel_path.with_suffix("").parts)
-            modules[mod_name] = py_file
+            rel_parts = list(py_file.relative_to(path_entry_path).with_suffix("").parts)
+            is_init = rel_parts[-1] == "__init__"
+            if is_init:
+                mod_name = ".".join(rel_parts[:-1])
+            else:
+                if rel_parts[-1].startswith("_"):
+                    continue
+                mod_name = ".".join(rel_parts)
+            result[mod_name] = (py_file, is_init)
 
-        return modules
+        return result
 
-    def _list_module_objects(self, module_name: str) -> dict[str, list[str]]:
-        # TODO parse ast instead of importing
+    @staticmethod
+    def _parse_module_definitions(file: Path) -> set[str]:
+        """Return top-level function and class names defined in file (AST, no import)."""
         try:
-            module = importlib.import_module(module_name)
+            tree = ast.parse(file.read_text())
+        except Exception:
+            return set()
+        return {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and not node.name.startswith("_")
+        }
+
+    @staticmethod
+    def _parse_init_reexports(file: Path, init_module: str) -> dict[str, str]:
+        """Return {exported_name: source_module} for relative imports in an __init__.py."""
+        try:
+            tree = ast.parse(file.read_text())
         except Exception:
             return {}
 
-        objects: dict[str, list[str]] = {}
-        for obj_name, obj in inspect.getmembers(module):
-            if obj_name.startswith("_"):
+        module_parts = init_module.split(".")
+        reexports: dict[str, str] = {}
+
+        for node in tree.body:
+            if not isinstance(node, ast.ImportFrom) or node.level == 0:
                 continue
-            if not hasattr(obj, "__module__"):
+            level = node.level
+            if level > len(module_parts):
                 continue
+            base_parts = module_parts[: len(module_parts) - (level - 1)]
+            source = ".".join(base_parts) + ("." + node.module if node.module else "")
+            for alias in node.names:
+                if alias.name == "*" or alias.asname is not None:
+                    continue
+                reexports[alias.name] = source
 
-            obj_module = obj.__module__
-            previous = None
-            while (
-                obj_module
-                and obj_module != previous
-                and obj_name in dir(importlib.import_module(obj_module))
-            ):
-                previous = obj_module
-                obj_module, _, _ = obj_module.rpartition(".")
+        return reexports
 
-            if not obj_module or obj_name not in dir(importlib.import_module(obj_module)):
-                obj_module = previous
+    @staticmethod
+    def _parse_class_attributes(file: Path, class_name: str) -> set[str]:
+        """Return method and attribute names declared in class_name inside file."""
+        try:
+            tree = ast.parse(file.read_text())
+        except Exception:
+            return set()
 
-            import_line = f"from {obj_module} import {obj_name}"
-            objects.setdefault(obj_name, []).append(import_line)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef) or node.name != class_name:
+                continue
+            attrs: set[str] = set()
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    attrs.add(item.name)
+                    for subnode in ast.walk(item):
+                        if isinstance(subnode, ast.Assign):
+                            for target in subnode.targets:
+                                if (
+                                    isinstance(target, ast.Attribute)
+                                    and isinstance(target.value, ast.Name)
+                                    and target.value.id == "self"
+                                ):
+                                    attrs.add(target.attr)
+                        elif isinstance(subnode, ast.AnnAssign):
+                            if (
+                                isinstance(subnode.target, ast.Attribute)
+                                and isinstance(subnode.target.value, ast.Name)
+                                and subnode.target.value.id == "self"
+                            ):
+                                attrs.add(subnode.target.attr)
+                elif isinstance(item, ast.Assign):
+                    for target in item.targets:
+                        if isinstance(target, ast.Name):
+                            attrs.add(target.id)
+                elif isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                    attrs.add(item.target.id)
+            return attrs
+        return set()
 
-        return objects
+    @staticmethod
+    def _parent_packages(module: str) -> list[str]:
+        """Return ancestor package names from immediate parent to root."""
+        parts = module.split(".")
+        return [".".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)]
 
     def extract_package_objects(self, package_name: str) -> dict[str, list[str]]:
         cache_path = self.get_cache_path(package_name)
-        module_files = self.find_package_files(package_name)
-        module_mtimes = {name: f.stat().st_mtime for name, f in module_files.items()}
+        all_files = self._iter_package_files(package_name)
 
-        # Check cache
-        cached_objects = {}
-        cached_mtimes = {}
+        if not all_files:
+            return {}
+
+        cached_module_defs: dict[str, Any] = {}
+        cached_init_reexports: dict[str, Any] = {}
         if cache_path.exists():
             try:
-                cache_data = pickle.loads(cache_path.read_bytes())
-                cached_mtimes = cache_data["mtimes"]
-                cached_objects = cache_data["objects"]
+                data = pickle.loads(cache_path.read_bytes())
+                cached_module_defs = data.get("module_defs", {})
+                cached_init_reexports = data.get("init_reexports", {})
             except Exception:
-                pass  # fallback to recalculation
+                pass
 
-        # Cache invalid, import only changed/new modules
-        objects: dict[str, list[str]] = defaultdict(list)
-        for module_name in module_files:
-            if module_name in cached_objects and module_mtimes[module_name] <= cached_mtimes.get(
-                module_name, 0
-            ):
-                for obj in cached_objects[module_name]:
-                    objects[obj.split()[-1]].append(obj)
+        module_defs: dict[str, list[str]] = {}
+        init_reexports: dict[str, dict[str, str]] = {}
+        new_module_defs: dict[str, Any] = {}
+        new_init_reexports: dict[str, Any] = {}
+
+        for mod_name, (file_path, is_init) in all_files.items():
+            mtime = file_path.stat().st_mtime
+            if is_init:
+                cached = cached_init_reexports.get(mod_name, {})
+                if cached.get("mtime", 0) >= mtime:
+                    init_reexports[mod_name] = cached["reexports"]
+                else:
+                    init_reexports[mod_name] = self._parse_init_reexports(file_path, mod_name)
+                new_init_reexports[mod_name] = {
+                    "mtime": mtime,
+                    "reexports": init_reexports[mod_name],
+                }
             else:
-                for obj_name, import_lines in self._list_module_objects(module_name).items():
-                    objects[obj_name].extend(import_lines)
-                    cached_objects.setdefault(module_name, []).extend(import_lines)
+                cached = cached_module_defs.get(mod_name, {})
+                if cached.get("mtime", 0) >= mtime:
+                    module_defs[mod_name] = cached["names"]
+                else:
+                    module_defs[mod_name] = list(self._parse_module_definitions(file_path))
+                new_module_defs[mod_name] = {"mtime": mtime, "names": module_defs[mod_name]}
 
-        # Save cache
-        cached_objects = {"objects": cached_objects, "mtimes": module_mtimes}
-        cache_path.write_bytes(pickle.dumps(cached_objects))
+        cache_path.write_bytes(
+            pickle.dumps({"module_defs": new_module_defs, "init_reexports": new_init_reexports})
+        )
+
+        objects: dict[str, list[str]] = {}
+        self._definition_files: dict[str, list[Path]] = {}
+
+        for mod_name, names in module_defs.items():
+            file_path = all_files[mod_name][0]
+            for name in names:
+                current = mod_name
+                for ancestor in self._parent_packages(mod_name):
+                    if init_reexports.get(ancestor, {}).get(name) == current:
+                        current = ancestor
+                    else:
+                        break
+                objects.setdefault(name, []).append(f"from {current} import {name}")
+                self._definition_files.setdefault(name, []).append(file_path)
 
         return objects
