@@ -721,6 +721,7 @@ class SourceCode:  # noqa: R090
         init_reexports: dict[str, dict[str, str]] = {}
         new_module_defs: dict[str, Any] = {}
         new_init_reexports: dict[str, Any] = {}
+        dirty = False
 
         for mod_name, (file_path, is_init) in all_files.items():
             mtime = file_path.stat().st_mtime
@@ -730,6 +731,7 @@ class SourceCode:  # noqa: R090
                     init_reexports[mod_name] = cached["reexports"]
                 else:
                     init_reexports[mod_name] = self._parse_init_reexports(file_path, mod_name)
+                    dirty = True
                 new_init_reexports[mod_name] = {
                     "mtime": mtime,
                     "reexports": init_reexports[mod_name],
@@ -740,14 +742,18 @@ class SourceCode:  # noqa: R090
                     module_defs[mod_name] = cached["names"]
                 else:
                     module_defs[mod_name] = list(self._parse_module_definitions(file_path))
+                    dirty = True
                 new_module_defs[mod_name] = {"mtime": mtime, "names": module_defs[mod_name]}
 
-        cache_path.write_bytes(
-            pickle.dumps({"module_defs": new_module_defs, "init_reexports": new_init_reexports})
-        )
+        if dirty:
+            cache_path.write_bytes(
+                pickle.dumps(
+                    {"module_defs": new_module_defs, "init_reexports": new_init_reexports}
+                )
+            )
 
         objects: dict[str, list[str]] = {}
-        self._definition_files: dict[str, list[Path]] = {}
+        definition_files: dict[str, list[Path]] = {}
 
         for mod_name, names in module_defs.items():
             file_path = all_files[mod_name][0]
@@ -759,6 +765,6 @@ class SourceCode:  # noqa: R090
                     else:
                         break
                 objects.setdefault(name, []).append(f"from {current} import {name}")
-                self._definition_files.setdefault(name, []).append(file_path)
+                definition_files.setdefault(name, []).append(file_path)
 
-        return objects
+        return objects, definition_files
