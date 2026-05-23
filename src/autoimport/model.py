@@ -23,7 +23,6 @@ common_statements: dict[str, str] = {
     "Callable": "from collections.abc import Callable",
     "Depends": "from fastapi import Depends",
     "Enum": "from enum import Enum",
-    "Enum": "from enum import Enum",
     "Field": "from pydantic import Field",
     "Image": "from PIL import Image",
     "Iterator": "from collections.abc import Iterator",
