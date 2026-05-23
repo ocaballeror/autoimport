@@ -375,6 +375,19 @@ def test_find_in_ours_matches_annotated_self_assignments(package: Path):
     assert result == "from package.a import Repo"
 
 
+# @pytest.mark.xfail(reason="import copy not implemented")
+def test_find_in_ours_copies_unknown_from_other(package: Path):
+    file_a = package / "a.py"
+    file_a.write_text("from requests.session import Session")
+
+    file_b = package / "b.py"
+    file_b.write_text("Session()")
+
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("Session", file_b)
+    assert result == "from requests import Session"
+
+
 def test_parse_class_attributes_returns_empty_set_when_class_not_found(package: Path):
     """
     Given: A file that does not contain the requested class.

@@ -233,13 +233,16 @@ class PackageFinder:
         return result
 
     @staticmethod
-    def _parse_module_definitions(file: Path) -> set[str]:
+    def _parse_module_definitions(file: Path, module: str) -> tuple[set[str], dict[str, str]]:
         try:
             tree = ast.parse(file.read_text())
         except Exception:
             return set()
 
+        module_parts = module.split(".")
+
         names: set[str] = set()
+        reexports: dict[str, str] = {}
         for node in tree.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 if not node.name.startswith("_"):
@@ -254,32 +257,21 @@ class PackageFinder:
             elif isinstance(node, ast.TypeAlias):
                 if isinstance(node.name, ast.Name) and not node.name.id.startswith("_"):
                     names.add(node.name.id)
-        return names
+            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                if node.module == module[0]:
+                    level = node.level
+                    if level > len(module_parts):
+                        continue
+                    base_parts = module_parts[: len(module_parts) - (level - 1)]
+                    source = ".".join(base_parts) + ("." + node.module if node.module else "")
+                else:
+                    source = node.module
 
-    @staticmethod
-    def _parse_init_reexports(file: Path, init_module: str) -> dict[str, str]:
-        try:
-            tree = ast.parse(file.read_text())
-        except Exception:
-            return {}
-
-        module_parts = init_module.split(".")
-        reexports: dict[str, str] = {}
-
-        for node in tree.body:
-            if not isinstance(node, ast.ImportFrom) or node.level == 0:
-                continue
-            level = node.level
-            if level > len(module_parts):
-                continue
-            base_parts = module_parts[: len(module_parts) - (level - 1)]
-            source = ".".join(base_parts) + ("." + node.module if node.module else "")
-            for alias in node.names:
-                if alias.name == "*" or alias.asname is not None:
-                    continue
-                reexports[alias.name] = source
-
-        return reexports
+                for alias in node.names:
+                    if alias.name == "*" or alias.asname is not None:
+                        continue
+                    reexports[alias.name] = source
+        return names, reexports
 
     @staticmethod
     def _parse_class_attributes(file: Path, class_name: str) -> set[str]:
@@ -339,47 +331,35 @@ class PackageFinder:
             return {}, {}
 
         cached_module_defs: dict[str, Any] = {}
-        cached_init_reexports: dict[str, Any] = {}
         if cache_path.exists():
             try:
-                data = pickle.loads(cache_path.read_bytes())
-                cached_module_defs = data.get("module_defs", {})
-                cached_init_reexports = data.get("init_reexports", {})
+                cached_module_defs = pickle.loads(cache_path.read_bytes())
             except Exception:
-                pass
+                cache_path.unlink()
 
         module_defs: dict[str, list[str]] = {}
-        init_reexports: dict[str, dict[str, str]] = {}
+        module_reexports: dict[str, list[str]] = {}
         new_module_defs: dict[str, Any] = {}
-        new_init_reexports: dict[str, Any] = {}
         dirty = False
 
         for mod_name, (file_path, is_init) in all_files.items():
             mtime = file_path.stat().st_mtime
-            if is_init:
-                cached = cached_init_reexports.get(mod_name, {})
-                if cached.get("mtime", 0) >= mtime:
-                    init_reexports[mod_name] = cached["reexports"]
-                else:
-                    init_reexports[mod_name] = self._parse_init_reexports(file_path, mod_name)
-                    dirty = True
-                new_init_reexports[mod_name] = {
-                    "mtime": mtime,
-                    "reexports": init_reexports[mod_name],
-                }
+            cached = cached_module_defs.get(mod_name, {})
+            if cached.get("mtime", 0) >= mtime:
+                module_defs[mod_name] = cached["names"]
             else:
-                cached = cached_module_defs.get(mod_name, {})
-                if cached.get("mtime", 0) >= mtime:
-                    module_defs[mod_name] = cached["names"]
-                else:
-                    module_defs[mod_name] = list(self._parse_module_definitions(file_path))
-                    dirty = True
-                new_module_defs[mod_name] = {"mtime": mtime, "names": module_defs[mod_name]}
+                module_defs[mod_name], module_reexports[mod_name] = list(
+                    self._parse_module_definitions(file_path, mod_name)
+                )
+                dirty = True
+            new_module_defs[mod_name] = {
+                "mtime": mtime,
+                "names": module_defs[mod_name],
+                "reexports": module_reexports[mod_name],
+            }
 
         if dirty:
-            cache_path.write_bytes(
-                pickle.dumps({"module_defs": new_module_defs, "init_reexports": new_init_reexports})
-            )
+            cache_path.write_bytes(pickle.dumps(new_module_defs))
 
         objects: dict[str, list[str]] = {}
         definition_files: dict[str, list[Path]] = {}
@@ -389,7 +369,7 @@ class PackageFinder:
             for name in names:
                 current = mod_name
                 for ancestor in self._parent_packages(mod_name):
-                    if init_reexports.get(ancestor, {}).get(name) == current:
+                    if module_reexports.get(ancestor, {}).get(name) == current:
                         current = ancestor
                     else:
                         break
