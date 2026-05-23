@@ -39,7 +39,7 @@ def package(tmp_path: Path):
         shutil.rmtree(".autoimport_cache", ignore_errors=True)
 
 
-def test_extraction_returns_package_functions(package: Path) -> None:
+def test_extraction_returns_package_functions(package: Path):
     """
     Given: A package with functions.
     When: extract package objects is called
@@ -110,7 +110,7 @@ def test_extraction_returns_empty_dict_if_package_is_not_importable():
     assert not result
 
 
-def test_extraction_works_when_module_raises_on_import(package: Path) -> None:
+def test_extraction_works_when_module_raises_on_import(package: Path):
     """
     Given: A module that would raise an error if imported.
     When: extract package objects is called.
@@ -125,7 +125,7 @@ def test_extraction_works_when_module_raises_on_import(package: Path) -> None:
     assert result["safe_func"] == ["from package.broken import safe_func"]
 
 
-def test_extraction_promotes_to_highest_init_reexport(package: Path) -> None:
+def test_extraction_promotes_to_highest_init_reexport(package: Path):
     """
     Given: A name defined in a leaf module, re-exported up two __init__.py levels.
     When: extract package objects is called.
@@ -142,7 +142,7 @@ def test_extraction_promotes_to_highest_init_reexport(package: Path) -> None:
     assert result == {"DeepClass": ["from package import DeepClass"]}
 
 
-def test_extraction_partial_promotion_stops_at_broken_chain(package: Path) -> None:
+def test_extraction_partial_promotion_stops_at_broken_chain(package: Path):
     """
     Given: A name re-exported from sub/__init__ but NOT from package/__init__.
     When: extract package objects is called.
@@ -159,7 +159,7 @@ def test_extraction_partial_promotion_stops_at_broken_chain(package: Path) -> No
     assert result == {"MidClass": ["from package.sub import MidClass"]}
 
 
-def test_extraction_excludes_private_names(package: Path) -> None:
+def test_extraction_excludes_private_names(package: Path):
     """
     Given: A module with private functions, classes and variables.
     When: extract package objects is called.
@@ -174,7 +174,7 @@ def test_extraction_excludes_private_names(package: Path) -> None:
     assert list(result.keys()) == ["public"]
 
 
-def test_extraction_includes_annotated_variables(package: Path) -> None:
+def test_extraction_includes_annotated_variables(package: Path):
     """
     Given: A module with annotated variable declarations.
     When: extract package objects is called.
@@ -188,7 +188,7 @@ def test_extraction_includes_annotated_variables(package: Path) -> None:
     assert "y" in result
 
 
-def test_extraction_same_name_in_two_files_returns_both_candidates(package: Path) -> None:
+def test_extraction_same_name_in_two_files_returns_both_candidates(package: Path):
     """
     Given: Two modules that each define a class with the same name.
     When: extract package objects is called.
@@ -204,7 +204,7 @@ def test_extraction_same_name_in_two_files_returns_both_candidates(package: Path
     assert "from package.b import Duplicate" in result["Duplicate"]
 
 
-def test_extraction_star_import_in_init_does_not_promote(package: Path) -> None:
+def test_extraction_star_import_in_init_does_not_promote(package: Path):
     """
     Given: __init__.py uses 'from .inner import *'.
     When: extract package objects is called.
@@ -218,7 +218,7 @@ def test_extraction_star_import_in_init_does_not_promote(package: Path) -> None:
     assert result == {"StarClass": ["from package.sub.inner import StarClass"]}
 
 
-def test_extraction_aliased_reexport_does_not_promote_original(package: Path) -> None:
+def test_extraction_aliased_reexport_does_not_promote_original(package: Path):
     """
     Given: __init__.py re-exports a name under an alias ('from .inner import Foo as Bar').
     When: extract package objects is called.
@@ -232,7 +232,7 @@ def test_extraction_aliased_reexport_does_not_promote_original(package: Path) ->
     assert result == {"Foo": ["from package.sub.inner import Foo"]}
 
 
-def test_extraction_syntax_error_in_module_is_skipped(package: Path) -> None:
+def test_extraction_syntax_error_in_module_is_skipped(package: Path):
     """
     Given: A module with a syntax error alongside valid modules.
     When: extract package objects is called.
@@ -247,7 +247,7 @@ def test_extraction_syntax_error_in_module_is_skipped(package: Path) -> None:
     assert "broken" not in str(result)
 
 
-def test_find_in_ours_no_usage_returns_mode(package: Path) -> None:
+def test_find_in_ours_no_usage_returns_mode(package: Path):
     """
     Given: Multiple candidates but the source code gives no usage clues.
     When: _find_package_in_our_project is called.
@@ -267,7 +267,7 @@ def test_find_in_ours_no_usage_returns_mode(package: Path) -> None:
     assert result == "from package.a import Thing" or result == "from package.b import Thing"
 
 
-def test_find_in_ours_selects_by_method_match(package: Path) -> None:
+def test_find_in_ours_selects_by_method_match(package: Path):
     """
     Given: Two classes with the same name; source calls methods only one of them has.
     When: _find_package_in_our_project is called.
@@ -287,7 +287,7 @@ def test_find_in_ours_selects_by_method_match(package: Path) -> None:
     assert result == "from package.a import Conn"
 
 
-def test_find_in_ours_falls_back_to_mode_when_no_match(package: Path) -> None:
+def test_find_in_ours_falls_back_to_mode_when_no_match(package: Path):
     """
     Given: Source uses methods that no candidate's class declares.
     When: _find_package_in_our_project is called.
@@ -307,7 +307,7 @@ def test_find_in_ours_falls_back_to_mode_when_no_match(package: Path) -> None:
     assert result == "from package.a import Widget" or result == "from package.b import Widget"
 
 
-def test_find_in_ours_matches_self_instance_attributes(package: Path) -> None:
+def test_find_in_ours_matches_self_instance_attributes(package: Path):
     """
     Given: Class sets instance attributes via self.x = ... in __init__.
     When: Source uses those attributes and _find_package_in_our_project is called.
@@ -333,7 +333,7 @@ def test_find_in_ours_matches_self_instance_attributes(package: Path) -> None:
     assert result == "from package.a import Config"
 
 
-def test_find_in_ours_matches_annotated_class_attributes(package: Path) -> None:
+def test_find_in_ours_matches_annotated_class_attributes(package: Path):
     """
     Given: Class declares attributes via annotation (x: int).
     When: Source uses those attributes and _find_package_in_our_project is called.
@@ -352,7 +352,7 @@ def test_find_in_ours_matches_annotated_class_attributes(package: Path) -> None:
     assert result == "from package.a import Record"
 
 
-def test_find_in_ours_matches_annotated_self_assignments(package: Path) -> None:
+def test_find_in_ours_matches_annotated_self_assignments(package: Path):
     """
     Given: Class sets instance attributes via annotated assignments (self.x: int = ...).
     When: Source uses those attributes and _find_package_in_our_project is called.
@@ -375,7 +375,7 @@ def test_find_in_ours_matches_annotated_self_assignments(package: Path) -> None:
     assert result == "from package.a import Repo"
 
 
-def test_parse_class_attributes_returns_empty_set_when_class_not_found(package: Path) -> None:
+def test_parse_class_attributes_returns_empty_set_when_class_not_found(package: Path):
     """
     Given: A file that does not contain the requested class.
     When: _parse_class_attributes is called.
@@ -388,7 +388,7 @@ def test_parse_class_attributes_returns_empty_set_when_class_not_found(package: 
     assert result == set()
 
 
-def test_parse_class_attributes_handles_syntax_error(package: Path) -> None:
+def test_parse_class_attributes_handles_syntax_error(package: Path):
     """
     Given: A file with a syntax error.
     When: _parse_class_attributes is called.
@@ -402,7 +402,7 @@ def test_parse_class_attributes_handles_syntax_error(package: Path) -> None:
     assert result == set()
 
 
-def test_extraction_type_alias_is_included(package: Path) -> None:
+def test_extraction_type_alias_is_included(package: Path):
     """
     Given: A module with a type alias (PEP 695 syntax).
     When: extract package objects is called.
@@ -416,7 +416,7 @@ def test_extraction_type_alias_is_included(package: Path) -> None:
     assert result["Vector"] == ["from package.types import Vector"]
 
 
-def test_extraction_syntax_error_in_init_is_skipped(package: Path) -> None:
+def test_extraction_syntax_error_in_init_is_skipped(package: Path):
     """
     Given: A sub-package whose __init__.py has a syntax error.
     When: extract package objects is called.
@@ -431,7 +431,7 @@ def test_extraction_syntax_error_in_init_is_skipped(package: Path) -> None:
     assert result == {"Inner": ["from package.sub.inner import Inner"]}
 
 
-def test_extraction_uses_cache_on_second_call(package: Path) -> None:
+def test_extraction_uses_cache_on_second_call(package: Path):
     """
     Given: extract_package_objects has been called once (cache written).
     When: The same package is extracted again without any file changes.
