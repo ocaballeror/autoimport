@@ -11,12 +11,16 @@ from autoimport.services import fix_files
 
 
 def fix_code(source: str, config: dict | None = None):
-    with NamedTemporaryFile("w+", suffix=".py") as tmp:
+    with NamedTemporaryFile("w+", suffix=".py", delete=False) as tmp:
         tmp.write(source)
-        tmp.flush()
-        fix_files([Path(tmp.name)], config=config)
-        tmp.seek(0)
-        return tmp.read()
+
+    tmp_path = Path(tmp.name)
+
+    try:
+        fix_files([tmp_path], config=config)
+        return tmp_path.read_text()
+    finally:
+        tmp_path.unlink()
 
 
 def test_fix_code_adds_missing_import():
@@ -360,7 +364,6 @@ def test_fix_respects_import_lines_in_multiple_line_strings():
     assert result == fixed_source
 
 
-@pytest.mark.xfail(reason="unsupported moving to the top")
 def test_fix_moves_import_statements_to_the_top():
     """Move import statements present in the source code to the top of the file"""
     source = dedent(
@@ -418,7 +421,6 @@ def test_fix_doesnt_move_indented_import_statements_to_the_top():
     assert result == fixed_source
 
 
-@pytest.mark.xfail(reason="unsupported moving to the top")
 def test_fix_moves_from_import_statements_to_the_top():
     """Move from import statements present in the source code to the top of the file"""
     source = dedent(
@@ -432,10 +434,10 @@ def test_fix_moves_from_import_statements_to_the_top():
         """\
         from os import getcwd
 
-
         a = 3
 
-        getcwd()"""
+        getcwd()
+        """
     )
 
     result = fix_code(source)
@@ -443,7 +445,6 @@ def test_fix_moves_from_import_statements_to_the_top():
     assert result == fixed_source
 
 
-@pytest.mark.xfail(reason="unsupported moving to the top")
 def test_fix_moves_multiline_import_statements_to_the_top():
     """
     Given: Multiple from X import Y lines.
@@ -464,15 +465,14 @@ def test_fix_moves_multiline_import_statements_to_the_top():
     fixed_source = dedent(
         """\
         from os import getcwd
-
         from re import (
             match,
         )
 
-
         getcwd()
 
-        match(r'a', 'a')"""
+        match(r"a", "a")
+        """
     )
 
     result = fix_code(source)
@@ -1169,7 +1169,6 @@ def test_file_with_non_used_multiline_import():
     assert result == ""
 
 
-@pytest.mark.xfail(reason="unsupported moving to the top")
 def test_file_with_import_and_seperator():
     """Ensure import lines with seperators are fixed correctly."""
     source = dedent(
