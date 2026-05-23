@@ -120,12 +120,20 @@ class PackageFinder:
                     if isinstance(node.targets[0], ast.Name) and node.value.func.id == target:
                         track = node.targets[0].id
 
-            if track and isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
-                if isinstance(node.value.func, ast.Attribute) and isinstance(
-                    node.value.func.value, ast.Name
+            if track and isinstance(node, ast.Expr):
+                if (
+                    isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Attribute)
+                    and isinstance(node.value.func.value, ast.Name)
+                    and node.value.func.value.id == track
                 ):
-                    if node.value.func.value.id == track:
-                        uses.append(node.value.func.attr)
+                    uses.append(node.value.func.attr)
+                elif (
+                    isinstance(node.value, ast.Attribute)
+                    and isinstance(node.value.value, ast.Name)
+                    and node.value.value.id == track
+                ):
+                    uses.append(node.value.attr)
 
         return uses
 

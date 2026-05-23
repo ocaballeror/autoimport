@@ -307,7 +307,6 @@ def test_find_in_ours_falls_back_to_mode_when_no_match(package: Path) -> None:
     assert result == "from package.a import Widget" or result == "from package.b import Widget"
 
 
-@pytest.mark.xfail(reason="unsupported until ast attr cache")
 def test_find_in_ours_matches_self_instance_attributes(package: Path) -> None:
     """
     Given: Class sets instance attributes via self.x = ... in __init__.
@@ -334,7 +333,6 @@ def test_find_in_ours_matches_self_instance_attributes(package: Path) -> None:
     assert result == "from package.a import Config"
 
 
-@pytest.mark.xfail(reason="unsupported until ast attr cache")
 def test_find_in_ours_matches_annotated_class_attributes(package: Path) -> None:
     """
     Given: Class declares attributes via annotation (x: int).
@@ -354,7 +352,6 @@ def test_find_in_ours_matches_annotated_class_attributes(package: Path) -> None:
     assert result == "from package.a import Record"
 
 
-@pytest.mark.xfail(reason="unsupported until ast attr cache")
 def test_find_in_ours_matches_annotated_self_assignments(package: Path) -> None:
     """
     Given: Class sets instance attributes via annotated assignments (self.x: int = ...).
