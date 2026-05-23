@@ -93,7 +93,7 @@ def test_correct_mix_dir_and_files(runner: CliRunner, test_dir: Path, tmp_path: 
     assert test_file.read_text() == fixed_source
 
 
-@pytest.mark.xfail(reason="stdin support removed. i think")
+@pytest.mark.xfail(reason="stdin support removed for now")
 def test_corrects_code_from_stdin(runner: CliRunner) -> None:
     """Correct the source code passed as stdin."""
     source = "os.getcwd()"

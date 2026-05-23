@@ -360,7 +360,7 @@ def test_fix_respects_import_lines_in_multiple_line_strings():
     assert result == fixed_source
 
 
-@pytest.mark.xfail(reason="unsupported for now")
+@pytest.mark.xfail(reason="unsupported moving to the top")
 def test_fix_moves_import_statements_to_the_top():
     """Move import statements present in the source code to the top of the file"""
     source = dedent(
@@ -418,7 +418,7 @@ def test_fix_doesnt_move_indented_import_statements_to_the_top():
     assert result == fixed_source
 
 
-@pytest.mark.xfail(reason="unsupported for now")
+@pytest.mark.xfail(reason="unsupported moving to the top")
 def test_fix_moves_from_import_statements_to_the_top():
     """Move from import statements present in the source code to the top of the file"""
     source = dedent(
@@ -443,7 +443,7 @@ def test_fix_moves_from_import_statements_to_the_top():
     assert result == fixed_source
 
 
-@pytest.mark.xfail(reason="unsupported for now")
+@pytest.mark.xfail(reason="unsupported moving to the top")
 def test_fix_moves_multiline_import_statements_to_the_top():
     """
     Given: Multiple from X import Y lines.
@@ -689,7 +689,7 @@ def test_fix_autoimports_objects_defined_in_the_root_of_the_package():
     assert result == fixed_source
 
 
-@pytest.mark.xfail(reason="unsupported for now")
+@pytest.mark.xfail(reason="unsupported __all__")
 def test_fix_autoimports_objects_defined_in___all__special_variable():
     """
     Given: Some missing packages in the __all__ variable
@@ -1169,7 +1169,7 @@ def test_file_with_non_used_multiline_import():
     assert result == ""
 
 
-@pytest.mark.xfail(reason="unsupported for now")
+@pytest.mark.xfail(reason="unsupported moving to the top")
 def test_file_with_import_and_seperator():
     """Ensure import lines with seperators are fixed correctly."""
     source = dedent(
