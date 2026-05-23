@@ -69,6 +69,8 @@ def delete_lines(path: Path, line_numbers: list[int]) -> list[str]:
 
 def fix_files(files: list[Path], config: dict[str, Any] | None = None) -> None:
     fnames = list(map(str, files))
+
+    subprocess.check_call(["ruff", "format", "--silent", *fnames])
     result = subprocess.run(
         [
             "ruff",
@@ -121,7 +123,6 @@ def fix_files(files: list[Path], config: dict[str, Any] | None = None) -> None:
     for fname, add_imports in imports_to_add.items():
         insert_imports(fname, add_imports)
 
-    subprocess.check_call(["ruff", "format", "--silent", *fnames])
     subprocess.check_call(
         ["ruff", "check", "--exit-zero", "--silent", "--select", "I001,F401", "--fix", *fnames]
     )

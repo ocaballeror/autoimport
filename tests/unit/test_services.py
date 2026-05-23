@@ -379,6 +379,7 @@ def test_fix_moves_import_statements_to_the_top():
 
         a = 3
 
+
         os.getcwd()
         """
     )
@@ -436,6 +437,7 @@ def test_fix_moves_from_import_statements_to_the_top():
 
         a = 3
 
+
         getcwd()
         """
     )
@@ -470,6 +472,7 @@ def test_fix_moves_multiline_import_statements_to_the_top():
         )
 
         getcwd()
+
 
         match(r"a", "a")
         """
@@ -1182,8 +1185,8 @@ def test_file_with_import_and_seperator():
         """
         import pdb
 
-
         a = 1
+
         pdb.set_trace()
         b = 2
         """
