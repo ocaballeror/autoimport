@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 
 
 @click.command()
+@click.version_option()
 @click.option("--config-file", default=None)
 @click.argument("files", type=Path, nargs=-1)
 def cli(

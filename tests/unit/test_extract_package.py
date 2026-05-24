@@ -574,6 +574,7 @@ def test_cache_fast_path_skips_assembly_on_identical_mtimes(package: Path):
     # Tamper with the per-module data in the disk cache to prove the fast path
     # returns the compiled result rather than re-assembling from modules.
     import pickle
+
     cache_path = sc.get_cache_path("package")
     cached = pickle.loads(cache_path.read_bytes())
     cached["modules"] = {}  # wipe modules — a rebuild would produce an empty result
@@ -654,9 +655,7 @@ def test_read_project_dependencies_handles_markers(tmp_path):
     Then: The name before the marker is returned.
     """
     pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text(
-        "[project]\ndependencies = [\"some-lib; python_version>'3.8'\"]\n"
-    )
+    pyproject.write_text("[project]\ndependencies = [\"some-lib; python_version>'3.8'\"]\n")
     result = PackageFinder._read_project_dependencies(tmp_path)
     assert result == ["some_lib"]
 

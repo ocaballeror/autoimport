@@ -105,9 +105,7 @@ def _stash_compound_fmt_skip(
     return stashed
 
 
-def _restore_compound_fmt_skip(
-    files: list[Path], stashed: dict[Path, dict[int, str]]
-) -> None:
+def _restore_compound_fmt_skip(files: list[Path], stashed: dict[Path, dict[int, str]]) -> None:
     """Restore compound `import X; ...  # fmt: skip` lines from placeholders."""
     for path in files:
         if path not in stashed:
