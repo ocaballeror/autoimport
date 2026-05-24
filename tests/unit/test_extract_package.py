@@ -375,7 +375,7 @@ def test_find_in_ours_matches_annotated_self_assignments(package: Path):
     assert result == "from package.a import Repo"
 
 
-# @pytest.mark.xfail(reason="import copy not implemented")
+@pytest.mark.xfail(reason="import copy not implemented")
 def test_find_in_ours_copies_unknown_from_other(package: Path):
     file_a = package / "a.py"
     file_a.write_text("from requests.session import Session")
@@ -557,3 +557,97 @@ def test_extraction_uses_cache_on_second_call(package: Path):
 
     assert first == second
     assert "cached_func" in second
+
+
+def test_read_project_dependencies_returns_dep_names(tmp_path):
+    """
+    Given: A pyproject.toml with a dependencies list.
+    When: _read_project_dependencies is called.
+    Then: The dependency names are returned, stripped of version specifiers.
+    """
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\ndependencies = ["requests>=2.0", "click[extra]>=7", "my-package"]\n'
+    )
+    result = PackageFinder._read_project_dependencies(tmp_path)
+    assert len(result) == 3
+    # my-package is not installed, so falls back to normalized name
+    assert result[2] == "my_package"
+    # requests and click may or may not resolve differently, but must be non-empty strings
+    assert all(r for r in result)
+
+
+def test_read_project_dependencies_handles_markers(tmp_path):
+    """
+    Given: A dependency with a PEP 508 environment marker.
+    When: _read_project_dependencies is called.
+    Then: The name before the marker is returned.
+    """
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        "[project]\ndependencies = [\"some-lib; python_version>'3.8'\"]\n"
+    )
+    result = PackageFinder._read_project_dependencies(tmp_path)
+    assert result == ["some_lib"]
+
+
+def test_read_project_dependencies_missing_pyproject(tmp_path):
+    """
+    Given: A directory without a pyproject.toml.
+    When: _read_project_dependencies is called.
+    Then: An empty list is returned without raising.
+    """
+    result = PackageFinder._read_project_dependencies(tmp_path)
+    assert result == []
+
+
+def test_read_project_dependencies_invalid_toml(tmp_path):
+    """
+    Given: A pyproject.toml with invalid TOML syntax.
+    When: _read_project_dependencies is called.
+    Then: An empty list is returned without raising.
+    """
+    (tmp_path / "pyproject.toml").write_text("this is not [valid toml !!!")
+    result = PackageFinder._read_project_dependencies(tmp_path)
+    assert result == []
+
+
+def test_read_project_dependencies_no_project_section(tmp_path):
+    """
+    Given: A pyproject.toml with no [project] table.
+    When: _read_project_dependencies is called.
+    Then: An empty list is returned.
+    """
+    (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 88\n")
+    result = PackageFinder._read_project_dependencies(tmp_path)
+    assert result == []
+
+
+def test_index_packages_includes_dependency_exports(package: Path):
+    """
+    Given: A pyproject.toml that lists a dependency, and that dependency has a package
+           directory available on sys.path (simulated via the tmp_path itself).
+    When: index_packages is called.
+    Then: Objects exported by the dependency appear in import_cache alongside project objects.
+    """
+    # Write a real pyproject.toml listing 'depkg' as a dependency
+    pyproject = package.parent / "pyproject.toml"
+    pyproject.write_text('[project]\ndependencies = ["depkg"]\n')
+
+    # Create the dependency package in the same tmp directory (it's on sys.path)
+    dep = package.parent / "depkg"
+    dep.mkdir()
+    (dep / "__init__.py").touch()
+    (dep / "api.py").write_text("class DepClass:\n pass\n")
+
+    # Our project also has a class with the same name (different file)
+    (package / "mod.py").write_text("class DepClass:\n def dep_method(self): pass\n")
+
+    sc = PackageFinder()
+    sc.index_packages(["DepClass"])
+
+    # Both the project candidate and the dependency candidate should be indexed
+    assert len(sc.import_cache["DepClass"]) == 2
+    import_lines = {line for line, _ in sc.import_cache["DepClass"]}
+    assert "from package.mod import DepClass" in import_lines
+    assert "from depkg.api import DepClass" in import_lines

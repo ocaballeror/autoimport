@@ -2,10 +2,12 @@
 
 import ast
 import hashlib
+import importlib.metadata
 import importlib.util
 import pickle
 import statistics
 import sys
+import tomllib
 from collections import defaultdict
 from functools import cache
 from pathlib import Path
@@ -83,7 +85,9 @@ class PackageFinder:
         if str(root) not in sys.path:
             sys.path.append(str(root))
 
-        for package in self._find_project_packages():
+        all_packages = list(self._find_project_packages()) + self._read_project_dependencies(root)
+
+        for package in all_packages:
             objects, def_files = self._extract_package_objects_with_files(package)
             assert objects.keys() == def_files.keys()
             for obj, imports in objects.items():
@@ -120,6 +124,39 @@ class PackageFinder:
             for path in where.iterdir()
             if path.is_dir() and path.name != "tests" and (path / "__init__.py").exists()
         ]
+
+    @staticmethod
+    @cache
+    def _read_project_dependencies(root: Path) -> list[str]:
+        try:
+            with open(root / "pyproject.toml", "rb") as f:
+                data = tomllib.load(f)
+            raw_deps = data.get("project", {}).get("dependencies", [])
+        except Exception:
+            return []
+
+        dist_names: list[str] = []
+        for dep in raw_deps:
+            name = dep.strip()
+            for i, ch in enumerate(name):
+                if ch in "><=!;[ \t":
+                    name = name[:i]
+                    break
+            if name:
+                dist_names.append(name)
+
+        try:
+            pkg_dist = importlib.metadata.packages_distributions()
+            dist_to_import: dict[str, str] = {}
+            for pkg_name, dists in pkg_dist.items():
+                for d in dists:
+                    dist_to_import[d.lower().replace("-", "_")] = pkg_name
+            return [
+                dist_to_import.get(d.lower().replace("-", "_"), d.lower().replace("-", "_"))
+                for d in dist_names
+            ]
+        except Exception:
+            return [d.lower().replace("-", "_") for d in dist_names]
 
     def _find_usage(self, file: Path, target: str) -> list[str]:
         try:
@@ -265,7 +302,7 @@ class PackageFinder:
         try:
             tree = ast.parse(file.read_text())
         except Exception:
-            return set()
+            return set(), {}
 
         module_parts = module.split(".")
 
@@ -510,6 +547,7 @@ class PackageFinder:
             cached = cached_module_defs.get(mod_name, {})
             if cached.get("mtime", 0) >= mtime:
                 module_defs[mod_name] = cached["names"]
+                module_reexports[mod_name] = cached.get("reexports", {})
             else:
                 module_defs[mod_name], module_reexports[mod_name] = list(
                     self._parse_module_definitions(file_path, mod_name)
