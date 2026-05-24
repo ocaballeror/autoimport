@@ -73,11 +73,18 @@ class PackageFinder:
 
     def __init__(self, config: dict[str, Any] | None = None) -> None:
         self.config = config if config else {}
-        self.cache_dir = Path(".autoimport_cache")
+        try:
+            root = here()
+        except RuntimeError:
+            root = Path()
+        self.cache_dir = root / ".autoimport_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         # { name: {("from . import name", "package/file.py")} }
         self.import_cache: dict[str, set[tuple[str, Path]]] = defaultdict(set)
         self._pkg_cache: dict[str, tuple[dict[str, list[str]], dict[str, list[Path]]]] = {}
+        self._common_stmt_cache: dict[str, str | None] = {}
+        self._libraries_cache: dict[str, str | None] = {}
+        self._project_packages_cache: dict[Path | None, list[str]] = {}
 
     def index_packages(self, names: Iterable[str]) -> None:
         try:
@@ -108,23 +115,31 @@ class PackageFinder:
 
         return self._find_package_in_our_project(name, file)
 
-    @cache
     def _find_project_packages(self, where: Path | None = None) -> list[str]:
-        if where is None:
+        if where in self._project_packages_cache:
+            return self._project_packages_cache[where]
+
+        resolved = where
+        if resolved is None:
             try:
-                where = here()
+                resolved = here()
             except RuntimeError:
+                self._project_packages_cache[None] = []
                 return []
 
-        src = where / "src"
+        src = resolved / "src"
         if src.is_dir():
-            return self._find_project_packages(src)
+            result = self._find_project_packages(src)
+            self._project_packages_cache[where] = result
+            return result
 
-        return [
+        result = [
             path.name
-            for path in where.iterdir()
+            for path in resolved.iterdir()
             if path.is_dir() and path.name != "tests" and (path / "__init__.py").exists()
         ]
+        self._project_packages_cache[where] = result
+        return result
 
     @staticmethod
     @cache
@@ -164,13 +179,18 @@ class PackageFinder:
             mo = ast.parse(file.read_text(), file.name)
         except SyntaxError:
             return []
-        track = None
+        track: str | None = None
         uses = []
         for node in ast.walk(mo):
-            if isinstance(node, ast.Assign):
+            if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+                var = node.targets[0].id
                 if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name):
-                    if isinstance(node.targets[0], ast.Name) and node.value.func.id == target:
-                        track = node.targets[0].id
+                    if node.value.func.id == target:
+                        track = var
+                    elif var == track:
+                        track = None
+                elif var == track:
+                    track = None
 
             if track and isinstance(node, ast.Expr):
                 if (
@@ -199,8 +219,7 @@ class PackageFinder:
         elif len(candidates) == 1:
             return list(candidates)[0][0]
 
-        usage = self._find_usage(file, name)
-        method_calls = self._find_method_calls(file, name)
+        usage, method_calls = self._analyze_usage(file, name)
 
         if not usage and not method_calls:
             return statistics.mode([line for line, _ in candidates])
@@ -243,14 +262,19 @@ class PackageFinder:
 
         return f"import {name}"
 
-    @cache
     def _find_package_in_libraries(self, name: str) -> str | None:
+        if name in self._libraries_cache:
+            return self._libraries_cache[name]
+
+        result = None
         for lib in common_libraries:
             objects = self.extract_package_objects(lib)
             if name in objects:
-                return objects[name][0]
+                result = objects[name][0]
+                break
 
-        return None
+        self._libraries_cache[name] = result
+        return result
 
     def _get_additional_statements(self) -> dict[str, str] | None:
         config_statements = self.config.get("common_statements")
@@ -258,17 +282,18 @@ class PackageFinder:
             return config_statements
         return self.config.get("tool", {}).get("autoimport", {}).get("common_statements")
 
-    @cache
     def _find_package_in_common_statements(self, name: str) -> str | None:
+        if name in self._common_stmt_cache:
+            return self._common_stmt_cache[name]
+
         local_common_statements = common_statements.copy()
         additional_statements = self._get_additional_statements()
         if additional_statements:
             local_common_statements.update(additional_statements)
 
-        if name in local_common_statements:
-            return local_common_statements[name]
-
-        return None
+        result = local_common_statements.get(name)
+        self._common_stmt_cache[name] = result
+        return result
 
     def get_cache_path(self, package_name: str) -> Path:
         hash_name = hashlib.sha256(package_name.encode()).hexdigest()
@@ -419,14 +444,16 @@ class PackageFinder:
         result: dict[str, _CallInfo] = {}
 
         for node in ast.walk(mo):
-            if isinstance(node, ast.Assign):
+            if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+                var = node.targets[0].id
                 if (
                     isinstance(node.value, ast.Call)
                     and isinstance(node.value.func, ast.Name)
                     and node.value.func.id == target
-                    and isinstance(node.targets[0], ast.Name)
                 ):
-                    tracked.add(node.targets[0].id)
+                    tracked.add(var)
+                elif var in tracked:
+                    tracked.discard(var)
 
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 value = node.func.value
@@ -449,6 +476,69 @@ class PackageFinder:
                         )
 
         return result
+
+    @staticmethod
+    def _analyze_usage(
+        file: Path, target: str
+    ) -> tuple[list[str], dict[str, _CallInfo]]:
+        """Parse the file once, returning both attribute uses and method call signatures."""
+        try:
+            mo = ast.parse(file.read_text(), file.name)
+        except SyntaxError:
+            return [], {}
+
+        tracked: set[str] = set()
+        uses: list[str] = []
+        method_calls: dict[str, _CallInfo] = {}
+
+        for node in ast.walk(mo):
+            if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+                var = node.targets[0].id
+                if (
+                    isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Name)
+                    and node.value.func.id == target
+                ):
+                    tracked.add(var)
+                elif var in tracked:
+                    tracked.discard(var)
+
+            if tracked and isinstance(node, ast.Expr):
+                if (
+                    isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Attribute)
+                    and isinstance(node.value.func.value, ast.Name)
+                    and node.value.func.value.id in tracked
+                ):
+                    uses.append(node.value.func.attr)
+                elif (
+                    isinstance(node.value, ast.Attribute)
+                    and isinstance(node.value.value, ast.Name)
+                    and node.value.value.id in tracked
+                ):
+                    uses.append(node.value.attr)
+
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                value = node.func.value
+                is_tracked = isinstance(value, ast.Name) and value.id in tracked
+                is_direct = (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Name)
+                    and value.func.id == target
+                )
+                if is_tracked or is_direct:
+                    method = node.func.attr
+                    if method not in method_calls:
+                        method_calls[method] = _CallInfo(
+                            positional_types=[
+                                PackageFinder._infer_arg_type(arg) for arg in node.args
+                            ],
+                            keyword_names=frozenset(
+                                kw.arg for kw in node.keywords if kw.arg is not None
+                            ),
+                        )
+
+        return uses, method_calls
 
     @staticmethod
     def _parse_method_signatures(file: Path, class_name: str) -> dict[str, _MethodSig]:
