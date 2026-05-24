@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 
 # I have no idea how to test this function :(. If you do, please send a PR.
-def load_logger(verbose: bool = False) -> None:  # pragma no cover
+def load_logger(verbose: bool = False) -> None:  # pragma: no cover
     """Configure the Logging logger.
 
     Args:

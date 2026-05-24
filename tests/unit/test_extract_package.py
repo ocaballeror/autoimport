@@ -4,10 +4,11 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from autoimport.model import PackageFinder
+from autoimport.model import PackageFinder, _CallInfo, _MethodSig
 
 
 def extract_package_objects(package_name: str) -> dict[str, list[str]]:
@@ -735,3 +736,212 @@ def test_find_package_in_libraries_resolves_typing_names():
     # Names re-exported from _typing (C extension) — the bug this test covers
     assert finder._find_package_in_libraries("Union") == "from typing import Union"
     assert finder._find_package_in_libraries("TypeVar") == "from typing import TypeVar"
+
+
+def test_find_project_packages_returns_empty_when_no_project_root():
+    """
+    Given: No pyproject.toml (or other marker) is found above the cwd.
+    When: _find_project_packages is called.
+    Then: Returns [] rather than raising.
+    """
+    with patch("autoimport.model.here", side_effect=RuntimeError("no project")):
+        sc = PackageFinder()
+        result = sc._find_project_packages()
+    assert result == []
+
+
+def test_read_project_dependencies_falls_back_when_metadata_raises(tmp_path):
+    """
+    Given: importlib.metadata.packages_distributions() raises unexpectedly.
+    When: _read_project_dependencies is called.
+    Then: Names are returned using simple lowercasing/normalization, not an empty list.
+    """
+    (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["my-lib"]\n')
+    with patch(
+        "autoimport.model.importlib.metadata.packages_distributions", side_effect=RuntimeError
+    ):
+        result = PackageFinder._read_project_dependencies(tmp_path)
+    assert result == ["my_lib"]
+
+
+def test_find_usage_returns_empty_on_syntax_error(tmp_path):
+    """
+    Given: The target file contains a syntax error.
+    When: _find_usage is called.
+    Then: Returns [] without raising.
+    """
+    f = tmp_path / "bad.py"
+    f.write_text("def (: broken")
+    result = PackageFinder()._find_usage(f, "Foo")
+    assert result == []
+
+
+def test_find_in_ours_falls_back_to_attr_mode_when_no_sig_matches(package: Path):
+    """
+    Given: Multiple candidates share the same method but the call passes more args than
+           any candidate accepts, so sig_filtered ends up empty.
+    When: _find_package_in_our_project is called.
+    Then: Falls back to mode of the attr-filtered candidates rather than returning None.
+    """
+    (package / "a.py").write_text("class T:\n def meth(self, a): pass\n")
+    (package / "b.py").write_text("class T:\n def meth(self, a): pass\n")
+    file_c = Path("c.py")
+    file_c.write_text("T().meth(1, 2, 3)\n")
+
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("T", file_c)
+
+    assert result is not None
+
+
+def test_parse_module_definitions_skips_too_deep_relative_import(package: Path):
+    """
+    Given: An __init__.py with a relative import whose level exceeds the module depth.
+    When: _parse_module_definitions is called.
+    Then: The over-deep import is silently skipped (not added to reexports).
+    """
+    init = package / "__init__.py"
+    init.write_text("from .. import foo\n")  # level=2, strips past package root
+
+    names, reexports = PackageFinder._parse_module_definitions(init, "package")
+
+    assert "foo" not in reexports
+
+
+def test_parse_class_attributes_includes_plain_class_assignments(tmp_path):
+    """
+    Given: A class with plain (non-annotated) class-level assignments.
+    When: _parse_class_attributes is called.
+    Then: Those assignment targets are included in the returned attribute set.
+    """
+    f = tmp_path / "mod.py"
+    f.write_text("class T:\n    x = 5\n    y = 'hello'\n")
+
+    result = PackageFinder._parse_class_attributes(f, "T")
+
+    assert "x" in result
+    assert "y" in result
+
+
+def test_infer_arg_type_handles_collection_literals_and_unknown(tmp_path):
+    """
+    Given: A call site that passes list, dict, set, tuple literals and an unknown variable.
+    When: _find_method_calls is called.
+    Then: Each literal is inferred correctly; the unknown variable produces None.
+    """
+    f = tmp_path / "mod.py"
+    f.write_text("T().meth([], {}, {1, 2}, (), unknown_var)\n")
+
+    result = PackageFinder._find_method_calls(f, "T")
+
+    assert result["meth"].positional_types == ["list", "dict", "set", "tuple", None]
+
+
+def test_find_method_calls_returns_empty_on_syntax_error(tmp_path):
+    """
+    Given: The target file contains a syntax error.
+    When: _find_method_calls is called.
+    Then: Returns {} without raising.
+    """
+    f = tmp_path / "bad.py"
+    f.write_text("def (: broken")
+
+    assert PackageFinder._find_method_calls(f, "T") == {}
+
+
+def test_parse_method_signatures_returns_empty_on_syntax_error(tmp_path):
+    """
+    Given: The source file contains a syntax error.
+    When: _parse_method_signatures is called.
+    Then: Returns {} without raising.
+    """
+    f = tmp_path / "bad.py"
+    f.write_text("def (: broken")
+
+    assert PackageFinder._parse_method_signatures(f, "T") == {}
+
+
+def test_parse_method_signatures_returns_empty_when_class_not_found(tmp_path):
+    """
+    Given: A file that does not define the requested class.
+    When: _parse_method_signatures is called.
+    Then: Returns {}.
+    """
+    f = tmp_path / "mod.py"
+    f.write_text("class Other:\n def meth(self): pass\n")
+
+    assert PackageFinder._parse_method_signatures(f, "Missing") == {}
+
+
+def test_parse_method_signatures_includes_inherited_methods(tmp_path):
+    """
+    Given: A class that inherits from a base class defined in the same file.
+    When: _parse_method_signatures is called on the subclass.
+    Then: Methods from the base class are included alongside the subclass's own methods.
+    """
+    f = tmp_path / "mod.py"
+    f.write_text(
+        "class Base:\n def base_meth(self, x: int): pass\n"
+        "class Child(Base):\n def child_meth(self, y: str): pass\n"
+    )
+
+    result = PackageFinder._parse_method_signatures(f, "Child")
+
+    assert "child_meth" in result
+    assert "base_meth" in result
+
+
+def test_call_signatures_match_continues_past_unknown_method():
+    """
+    Given: The call references a method not present in the candidate's signatures.
+    When: _call_signatures_match is called.
+    Then: The unknown method is skipped (returns True — no proven incompatibility).
+    """
+    calls = {"missing_meth": _CallInfo([None], frozenset())}
+    sigs = {"other_meth": _MethodSig([None], 1, 1, frozenset({"x"}), False)}
+
+    assert PackageFinder._call_signatures_match(calls, sigs) is True
+
+
+def test_call_signatures_match_returns_false_for_too_few_positional_args():
+    """
+    Given: The call passes fewer positional args than the method requires.
+    When: _call_signatures_match is called.
+    Then: Returns False.
+    """
+    calls = {"meth": _CallInfo([], frozenset())}  # 0 args
+    sigs = {"meth": _MethodSig([None, None], 2, 2, frozenset({"a", "b"}), False)}  # min 2
+
+    assert PackageFinder._call_signatures_match(calls, sigs) is False
+
+
+def test_call_signatures_match_returns_false_for_too_many_positional_args():
+    """
+    Given: The call passes more positional args than the method accepts.
+    When: _call_signatures_match is called.
+    Then: Returns False.
+    """
+    calls = {"meth": _CallInfo([None, None], frozenset())}  # 2 args
+    sigs = {"meth": _MethodSig([None], 1, 1, frozenset({"a"}), False)}  # max 1
+
+    assert PackageFinder._call_signatures_match(calls, sigs) is False
+
+
+def test_load_package_objects_recovers_from_corrupted_pickle(package: Path):
+    """
+    Given: The disk cache for a package contains corrupt pickle data.
+    When: _load_package_objects is called.
+    Then: The bad cache is deleted, the package is re-parsed, and the correct result
+          is returned.
+    """
+    (package / "mod.py").write_text("class Recovered:\n pass\n")
+
+    sc = PackageFinder()
+    sc._load_package_objects("package")  # writes valid cache
+
+    sc.get_cache_path("package").write_bytes(b"not valid pickle data at all")
+
+    sc2 = PackageFinder()
+    result, _ = sc2._load_package_objects("package")
+
+    assert "Recovered" in result

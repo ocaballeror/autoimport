@@ -1,13 +1,15 @@
 """Tests the service layer."""
 
+import json
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from textwrap import dedent
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from autoimport.model import common_statements
-from autoimport.services import fix_files
+from autoimport.services import _restore_compound_fmt_skip, fix_files
 
 
 def fix_code(source: str, config: dict | None = None):
@@ -1295,3 +1297,71 @@ def test_fix_files_skips_file_that_needs_no_changes(tmp_path) -> None:
 
     fix_files([test_file])
     assert test_file.read_text() == source
+
+
+def test_restore_compound_fmt_skip_handles_oserror(tmp_path):
+    """
+    Given: A file in the stash dict has been deleted before restore runs.
+    When: _restore_compound_fmt_skip is called.
+    Then: The OSError is swallowed and no exception propagates.
+    """
+    path = tmp_path / "test.py"
+    path.write_text("x = 1\n")
+    stashed = {path: {0: "import foo  # fmt: skip\n"}}
+    path.unlink()  # trigger OSError on read_text
+
+    _restore_compound_fmt_skip([path], stashed)  # must not raise
+
+
+def test_fix_files_skips_ruff_message_that_has_autofix(tmp_path):
+    """
+    Given: Ruff reports a violation that already carries an auto-fix.
+    When: fix_files processes the messages.
+    Then: The fixable message is skipped; no import is injected for it.
+    """
+    f = tmp_path / "test.py"
+    original = "x = undefined_name\n"
+    f.write_text(original)
+
+    ruff_output = json.dumps([{
+        "code": "F821",
+        "message": "Undefined name `undefined_name`",
+        "filename": str(f),
+        "fix": {"message": "auto-fixable", "edits": []},
+        "location": {"row": 1, "column": 4},
+        "end_location": {"row": 1, "column": 18},
+    }])
+
+    with patch("autoimport.services.subprocess.run") as mock_run, \
+            patch("autoimport.services.subprocess.check_call"):
+        mock_run.return_value = MagicMock(stdout=ruff_output, returncode=1)
+        fix_files([f])
+
+    assert f.read_text() == original
+
+
+def test_fix_files_skips_f821_when_message_has_no_quoted_name(tmp_path):
+    """
+    Given: Ruff reports an F821 violation whose message has no backtick-quoted name.
+    When: fix_files processes the messages.
+    Then: The malformed message is skipped; no import is injected.
+    """
+    f = tmp_path / "test.py"
+    original = "x = something\n"
+    f.write_text(original)
+
+    ruff_output = json.dumps([{
+        "code": "F821",
+        "message": "Undefined name without backtick quotes",
+        "filename": str(f),
+        "fix": None,
+        "location": {"row": 1, "column": 4},
+        "end_location": {"row": 1, "column": 13},
+    }])
+
+    with patch("autoimport.services.subprocess.run") as mock_run, \
+            patch("autoimport.services.subprocess.check_call"):
+        mock_run.return_value = MagicMock(stdout=ruff_output, returncode=1)
+        fix_files([f])
+
+    assert f.read_text() == original
