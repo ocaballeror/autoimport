@@ -2,8 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import IO, Any
-
 import click
 import xdg_base_dirs
 from maison import UserConfig
@@ -18,7 +16,7 @@ log = logging.getLogger(__name__)
 @click.option("--config-file", default=None)
 @click.argument("files", type=Path, nargs=-1)
 def cli(
-    files: list[IO[Any]],
+    files: tuple[Path, ...],
     config_file: str | None = None,
 ) -> None:
     """Corrects the source code of the specified files."""
@@ -37,7 +35,7 @@ def cli(
         package_name="autoimport", source_files=config_files, merge_configs=True
     ).values
 
-    services.fix_files(list(files), config)  # type: ignore[arg-type]
+    services.fix_files(list(files), config)
 
 
 if __name__ == "__main__":  # pragma: no cover
