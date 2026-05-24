@@ -1,11 +1,8 @@
-# --------- uv -------------
-
 [project]
-# PEP 621 project metadata
-# See https://www.python.org/dev/peps/pep-0621/
 dynamic = ["version"]
 authors = [
     {name = "Lyz", email = "lyz@riseup.net"},
+    {name = "Oscar", email = "ocaballeror@tutanota.com"},
 ]
 license = {text = "GPL-3.0-only"}
 requires-python = ">=3.13"
@@ -27,17 +24,16 @@ classifiers=[
     "Operating System :: POSIX",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Utilities",
     "Natural Language :: English",
 ]
 
 [project.urls]
-Issues = "https://github.com/lyz-code/autoimport/issues"
-homepage = "https://github.com/lyz-code/autoimport"
+Issues = "https://github.com/ocaballeror/autoimport/issues"
+homepage = "https://github.com/ocaballeror/autoimport"
 documentation = "https://lyz-code.github.io/autoimport"
 
 [project.scripts]
@@ -67,14 +63,6 @@ dev = [
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
-# --------- Autoimport -------------
-
-[tool.autoimport.common_statements]
-"factories" = "from tests import factories"
-
-
-# --------- Pytest -------------
-
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-vv -rs --tb=short"
@@ -88,32 +76,17 @@ norecursedirs = [
     "*/Autoimport/*",
     "*/deepdiff/*"
 ]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "secondary: mark tests that use functionality tested in the same file (deselect with '-m \"not secondary\"')"
-]
-
-# --------- Coverage -------------
 
 [tool.coverage.report]
 exclude_lines = [
-    # Have to re-enable the standard pragma
     'pragma: no cover',
-
-    # Type checking can not be tested
     'if TYPE_CHECKING:',
-
-    # Ignore the Abstract classes definition
     'raise NotImplementedError',
-
-    # Ignore entrypoints
     'if __name__ == "__main__":',
 ]
 
-# --------- Mypy -------------
-
 [tool.mypy]
-python_version = 3.13
+python_version = 3.14
 show_error_codes = true
 ignore_missing_imports = false
 strict_optional = true
@@ -132,22 +105,17 @@ disable_error_code = "import-untyped"
 
 [[tool.mypy.overrides]]
 module = "tests.*"
-# Required to not have  error: Untyped decorator makes function on fixtures and
-# parametrize decorators
 disallow_untyped_decorators = false
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 
-# --------- Ruff -------------
-
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["F", "E", "I001", "TID", "UP"]
 fixable = ["ALL"]
 
 [tool.ruff.format]
-# Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
