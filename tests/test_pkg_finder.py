@@ -1,53 +1,16 @@
-"""Tests for PackageFinder and AST parsing utilities."""
+"""Tests for PackageFinder import resolution logic."""
 
-import os
-import shutil
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from autoimport.ast_utils import (
-    _CallInfo,
-    _MethodSig,
-    call_signatures_match,
-    find_method_calls,
-    find_usage,
-    parse_class_attributes,
-    parse_method_signatures,
-    parse_module_definitions,
-)
 from autoimport.finder import PackageFinder
 
 
 def extract_package_objects(package_name: str) -> dict[str, list[str]]:
     """Return importable names from a package."""
     return PackageFinder().extract_package_objects(package_name)
-
-
-@pytest.fixture
-def package(tmp_path: Path):
-    (tmp_path / "pyproject.toml").touch()
-
-    package = tmp_path / "package"
-    package.mkdir()
-    (package / "__init__.py").touch()
-
-    sub = package / "sub"
-    sub.mkdir()
-    (sub / "__init__.py").touch()
-
-    cwd = os.getcwd()
-    sys.path.append(str(tmp_path))
-
-    try:
-        os.chdir(tmp_path)
-        yield package
-    finally:
-        os.chdir(cwd)
-        sys.path.remove(str(tmp_path))
-        shutil.rmtree(".autoimport_cache", ignore_errors=True)
 
 
 def test_extraction_returns_package_functions(package: Path):
@@ -163,7 +126,6 @@ def test_extraction_partial_promotion_stops_at_broken_chain(package: Path):
     inner.write_text("class MidClass:\n pass")
 
     (package / "sub" / "__init__.py").write_text("from .inner import MidClass")
-    # package/__init__.py does NOT re-export MidClass
 
     result = extract_package_objects("package")
 
@@ -246,8 +208,7 @@ def test_extraction_aliased_reexport_does_not_promote_original(package: Path):
 def test_extraction_picks_up_names_listed_in___all__(package: Path):
     """
     Given: A module that lists names in __all__ but does not define them as
-           top-level statements (they could come from a wildcard re-export, for
-           instance).
+           top-level statements.
     When: extract package objects is called.
     Then: The names listed in __all__ are still exposed as importable.
     """
@@ -258,8 +219,6 @@ def test_extraction_picks_up_names_listed_in___all__(package: Path):
     result = extract_package_objects("package")
 
     assert "inner_thing" in result
-    # Even if StringOnly isn't defined anywhere, listing it in __all__ should
-    # surface it as an export from this module.
     assert "StringOnly" in result
     assert "from package.things import StringOnly" in result["StringOnly"]
 
@@ -300,7 +259,7 @@ def test_extraction_syntax_error_in_module_is_skipped(package: Path):
     When: extract package objects is called.
     Then: The broken file is skipped and valid definitions are still returned.
     """
-    (package / "broken.py").write_text("def (: pass")  # invalid syntax
+    (package / "broken.py").write_text("def (: pass")
     (package / "valid.py").write_text("def good_func(): pass")
 
     result = extract_package_objects("package")
@@ -361,7 +320,7 @@ def test_find_in_ours_falls_back_to_mode_when_no_match(package: Path):
     file_b.write_text("class Widget:\n def draw(self): pass\n")
 
     file_c = Path("c.py")
-    file_c.write_text("w = Widget()\nw.fly()\n")  # .fly() is in neither class
+    file_c.write_text("w = Widget()\nw.fly()\n")
 
     sc = PackageFinder()
 
@@ -550,33 +509,6 @@ def test_find_in_ours_disambiguates_by_keyword_arg_name(package: Path):
     assert result == "from package.a import T"
 
 
-def test_parse_class_attributes_returns_empty_set_when_class_not_found(package: Path):
-    """
-    Given: A file that does not contain the requested class.
-    When: _parse_class_attributes is called.
-    Then: An empty set is returned.
-    """
-    f = package / "mod.py"
-    f.write_text("class Other:\n pass\n")
-
-    result = parse_class_attributes(f, "Missing")
-    assert result == set()
-
-
-def test_parse_class_attributes_handles_syntax_error(package: Path):
-    """
-    Given: A file with a syntax error.
-    When: _parse_class_attributes is called.
-    Then: An empty set is returned without raising.
-    """
-    f = package / "bad.py"
-    f.write_text("class (: pass")
-
-    result = parse_class_attributes(f, "Anything")
-
-    assert result == set()
-
-
 def test_extraction_type_alias_is_included(package: Path):
     """
     Given: A module with a type alias (PEP 695 syntax).
@@ -602,94 +534,66 @@ def test_extraction_syntax_error_in_init_is_skipped(package: Path):
 
     result = extract_package_objects("package")
 
-    # Inner is still found at its defining module; broken __init__ means no promotion
     assert result == {"Inner": ["from package.sub.inner import Inner"]}
 
 
-def test_extraction_uses_cache_on_second_call(package: Path):
+def test_find_in_ours_falls_back_to_attr_mode_when_no_sig_matches(package: Path):
     """
-    Given: extract_package_objects has been called once (cache written).
-    When: The same package is extracted again without any file changes.
-    Then: The result is identical (cache hit path exercised).
+    Given: Multiple candidates share the same method but the call passes more args than
+           any candidate accepts, so sig_filtered ends up empty.
+    When: _find_package_in_our_project is called.
+    Then: Falls back to mode of the attr-filtered candidates rather than returning None.
     """
-    (package / "cached.py").write_text("def cached_func(): pass")
-
-    first = extract_package_objects("package")
-    second = extract_package_objects("package")
-
-    assert first == second
-    assert "cached_func" in second
-
-
-def test_cache_fast_path_skips_assembly_on_identical_mtimes(package: Path):
-    """
-    Given: The disk cache is warm (first call already wrote fingerprint + compiled result).
-    When: _load_package_objects is called again with no file changes.
-    Then: The compiled objects are returned directly from the fingerprint fast path
-          (no per-module parsing or re-assembly).
-    """
-    (package / "mod.py").write_text("class Fast:\n pass\n")
+    (package / "a.py").write_text("class T:\n def meth(self, a): pass\n")
+    (package / "b.py").write_text("class T:\n def meth(self, a): pass\n")
+    file_c = Path("c.py")
+    file_c.write_text("T().meth(1, 2, 3)\n")
 
     sc = PackageFinder()
-    first = sc._load_package_objects("package")
+    result = sc._find_package_in_our_project("T", file_c)
 
-    # Tamper with the per-module data in the disk cache to prove the fast path
-    # returns the compiled result rather than re-assembling from modules.
-    import pickle
-
-    cache_path = sc.get_cache_path("package")
-    cached = pickle.loads(cache_path.read_bytes())
-    cached["modules"] = {}  # wipe modules — a rebuild would produce an empty result
-    cache_path.write_bytes(pickle.dumps(cached))
-
-    second = sc._load_package_objects("package")
-
-    # Fast path should return the same compiled result, not the empty rebuild
-    assert first == second
-    assert "Fast" in first[0]
+    assert result is not None
 
 
-def test_cache_in_memory_avoids_disk_on_second_call(package: Path):
+def test_find_package_in_libraries_resolves_typing_names():
     """
-    Given: _extract_package_objects_with_files has been called once on an instance.
-    When: It is called again for the same package on the same instance.
-    Then: The in-memory _pkg_cache is used (no disk read needed).
+    Given: Names from the typing module, including ones backed by a C extension.
+    When: _find_package_in_libraries is called.
+    Then: All names resolve to `from typing import X`, not to the C extension.
     """
-    (package / "mod.py").write_text("class Memo:\n pass\n")
-
-    sc = PackageFinder()
-    first = sc._extract_package_objects_with_files("package")
-
-    # Remove the disk cache to prove the second call doesn't touch disk
-    sc.get_cache_path("package").unlink()
-
-    second = sc._extract_package_objects_with_files("package")
-
-    assert first is second  # exact same objects, not a copy
+    finder = PackageFinder()
+    assert finder._find_package_in_libraries("Optional") == "from typing import Optional"
+    assert finder._find_package_in_libraries("Any") == "from typing import Any"
+    assert finder._find_package_in_libraries("Union") == "from typing import Union"
+    assert finder._find_package_in_libraries("TypeVar") == "from typing import TypeVar"
 
 
-def test_cache_invalidates_when_file_changes(package: Path):
+def test_find_package_in_libraries_resolves_stdlib_names():
     """
-    Given: The disk cache is warm.
-    When: A source file is modified (mtime advances).
-    Then: The fingerprint no longer matches, the file is re-parsed,
-          and the cache is rewritten with the new content.
+    Given: Names from extended stdlib libraries in common_libraries.
+    When: _find_package_in_libraries is called.
+    Then: They resolve to imports from the appropriate stdlib module.
     """
-    mod = package / "mod.py"
-    mod.write_text("class OldName:\n pass\n")
+    finder = PackageFinder()
+    assert finder._find_package_in_libraries("reduce") == "from functools import reduce"
+    assert finder._find_package_in_libraries("wraps") == "from functools import wraps"
+    assert finder._find_package_in_libraries("dataclass") == "from dataclasses import dataclass"
+    assert finder._find_package_in_libraries("field") == "from dataclasses import field"
+    assert finder._find_package_in_libraries("contextmanager") == (
+        "from contextlib import contextmanager"
+    )
 
-    sc = PackageFinder()
-    sc._load_package_objects("package")
 
-    # Simulate a file change by rewriting with new content and bumping mtime
-    mod.write_text("class NewName:\n pass\n")
-    mod.touch()  # ensure mtime advances
-
-    sc2 = PackageFinder()
-    result, _ = sc2._load_package_objects("package")
-
-    assert "NewName" in result
-    assert "OldName" not in result
+def test_find_project_packages_returns_empty_when_no_project_root():
+    """
+    Given: No pyproject.toml (or other marker) is found above the cwd.
+    When: _find_project_packages is called.
+    Then: Returns [] rather than raising.
+    """
+    with patch("autoimport.finder.here", side_effect=RuntimeError("no project")):
+        sc = PackageFinder()
+        result = sc._find_project_packages()
+    assert result == []
 
 
 def test_read_project_dependencies_returns_dep_names(tmp_path):
@@ -704,9 +608,7 @@ def test_read_project_dependencies_returns_dep_names(tmp_path):
     )
     result = PackageFinder._read_project_dependencies(tmp_path)
     assert len(result) == 3
-    # my-package is not installed, so falls back to normalized name
     assert result[2] == "my_package"
-    # requests and click may or may not resolve differently, but must be non-empty strings
     assert all(r for r in result)
 
 
@@ -757,79 +659,27 @@ def test_read_project_dependencies_no_project_section(tmp_path):
 def test_index_packages_includes_dependency_exports(package: Path):
     """
     Given: A pyproject.toml that lists a dependency, and that dependency has a package
-           directory available on sys.path (simulated via the tmp_path itself).
+           directory available on sys.path.
     When: index_packages is called.
     Then: Objects exported by the dependency appear in import_cache alongside project objects.
     """
-    # Write a real pyproject.toml listing 'depkg' as a dependency
     pyproject = package.parent / "pyproject.toml"
     pyproject.write_text('[project]\ndependencies = ["depkg"]\n')
 
-    # Create the dependency package in the same tmp directory (it's on sys.path)
     dep = package.parent / "depkg"
     dep.mkdir()
     (dep / "__init__.py").touch()
     (dep / "api.py").write_text("class DepClass:\n pass\n")
 
-    # Our project also has a class with the same name (different file)
     (package / "mod.py").write_text("class DepClass:\n def dep_method(self): pass\n")
 
     sc = PackageFinder()
     sc.index_packages(["DepClass"])
 
-    # Both the project candidate and the dependency candidate should be indexed
     assert len(sc.import_cache["DepClass"]) == 2
     import_lines = {line for line, _ in sc.import_cache["DepClass"]}
     assert "from package.mod import DepClass" in import_lines
     assert "from depkg.api import DepClass" in import_lines
-
-
-def test_find_package_in_libraries_resolves_typing_names():
-    """
-    Given: Names from the typing module, including ones backed by a C extension.
-    When: _find_package_in_libraries is called.
-    Then: All names resolve to `from typing import X`, not to the C extension.
-    """
-    finder = PackageFinder()
-    # Names defined directly in typing.py
-    assert finder._find_package_in_libraries("Optional") == "from typing import Optional"
-    assert finder._find_package_in_libraries("Any") == "from typing import Any"
-    # Names re-exported from _typing (C extension) — the bug this test covers
-    assert finder._find_package_in_libraries("Union") == "from typing import Union"
-    assert finder._find_package_in_libraries("TypeVar") == "from typing import TypeVar"
-
-
-def test_find_package_in_libraries_resolves_stdlib_names():
-    """
-    Given: Names from extended stdlib libraries in common_libraries.
-    When: _find_package_in_libraries is called.
-    Then: They resolve to imports from the appropriate stdlib module.
-
-    Note: names that exist in both ``typing`` and another stdlib module
-    (Counter, OrderedDict, defaultdict, deque, Pattern, Match, ...) live in
-    ``common_statements`` to disambiguate; this test deliberately uses names
-    that exist in exactly one of ``common_libraries``.
-    """
-    finder = PackageFinder()
-    assert finder._find_package_in_libraries("reduce") == "from functools import reduce"
-    assert finder._find_package_in_libraries("wraps") == "from functools import wraps"
-    assert finder._find_package_in_libraries("dataclass") == "from dataclasses import dataclass"
-    assert finder._find_package_in_libraries("field") == "from dataclasses import field"
-    assert finder._find_package_in_libraries("contextmanager") == (
-        "from contextlib import contextmanager"
-    )
-
-
-def test_find_project_packages_returns_empty_when_no_project_root():
-    """
-    Given: No pyproject.toml (or other marker) is found above the cwd.
-    When: _find_project_packages is called.
-    Then: Returns [] rather than raising.
-    """
-    with patch("autoimport.finder.here", side_effect=RuntimeError("no project")):
-        sc = PackageFinder()
-        result = sc._find_project_packages()
-    assert result == []
 
 
 def test_read_project_dependencies_uses_fallback_map_for_known_dists(tmp_path):
@@ -863,186 +713,3 @@ def test_read_project_dependencies_falls_back_when_metadata_raises(tmp_path):
     ):
         result = PackageFinder._read_project_dependencies(tmp_path)
     assert result == ["my_lib"]
-
-
-def test_find_usage_returns_empty_on_syntax_error(tmp_path):
-    """
-    Given: The target file contains a syntax error.
-    When: _find_usage is called.
-    Then: Returns [] without raising.
-    """
-    f = tmp_path / "bad.py"
-    f.write_text("def (: broken")
-    result = find_usage(f, "Foo")
-    assert result == []
-
-
-def test_find_in_ours_falls_back_to_attr_mode_when_no_sig_matches(package: Path):
-    """
-    Given: Multiple candidates share the same method but the call passes more args than
-           any candidate accepts, so sig_filtered ends up empty.
-    When: _find_package_in_our_project is called.
-    Then: Falls back to mode of the attr-filtered candidates rather than returning None.
-    """
-    (package / "a.py").write_text("class T:\n def meth(self, a): pass\n")
-    (package / "b.py").write_text("class T:\n def meth(self, a): pass\n")
-    file_c = Path("c.py")
-    file_c.write_text("T().meth(1, 2, 3)\n")
-
-    sc = PackageFinder()
-    result = sc._find_package_in_our_project("T", file_c)
-
-    assert result is not None
-
-
-def test_parse_module_definitions_skips_too_deep_relative_import(package: Path):
-    """
-    Given: An __init__.py with a relative import whose level exceeds the module depth.
-    When: _parse_module_definitions is called.
-    Then: The over-deep import is silently skipped (not added to reexports).
-    """
-    init = package / "__init__.py"
-    init.write_text("from .. import foo\n")  # level=2, strips past package root
-
-    names, reexports = parse_module_definitions(init, "package")
-
-    assert "foo" not in reexports
-
-
-def test_parse_class_attributes_includes_plain_class_assignments(tmp_path):
-    """
-    Given: A class with plain (non-annotated) class-level assignments.
-    When: _parse_class_attributes is called.
-    Then: Those assignment targets are included in the returned attribute set.
-    """
-    f = tmp_path / "mod.py"
-    f.write_text("class T:\n    x = 5\n    y = 'hello'\n")
-
-    result = parse_class_attributes(f, "T")
-
-    assert "x" in result
-    assert "y" in result
-
-
-def test_infer_arg_type_handles_collection_literals_and_unknown(tmp_path):
-    """
-    Given: A call site that passes list, dict, set, tuple literals and an unknown variable.
-    When: _find_method_calls is called.
-    Then: Each literal is inferred correctly; the unknown variable produces None.
-    """
-    f = tmp_path / "mod.py"
-    f.write_text("T().meth([], {}, {1, 2}, (), unknown_var)\n")
-
-    result = find_method_calls(f, "T")
-
-    assert result["meth"].positional_types == ["list", "dict", "set", "tuple", None]
-
-
-def test_find_method_calls_returns_empty_on_syntax_error(tmp_path):
-    """
-    Given: The target file contains a syntax error.
-    When: _find_method_calls is called.
-    Then: Returns {} without raising.
-    """
-    f = tmp_path / "bad.py"
-    f.write_text("def (: broken")
-
-    assert find_method_calls(f, "T") == {}
-
-
-def test_parse_method_signatures_returns_empty_on_syntax_error(tmp_path):
-    """
-    Given: The source file contains a syntax error.
-    When: _parse_method_signatures is called.
-    Then: Returns {} without raising.
-    """
-    f = tmp_path / "bad.py"
-    f.write_text("def (: broken")
-
-    assert parse_method_signatures(f, "T") == {}
-
-
-def test_parse_method_signatures_returns_empty_when_class_not_found(tmp_path):
-    """
-    Given: A file that does not define the requested class.
-    When: _parse_method_signatures is called.
-    Then: Returns {}.
-    """
-    f = tmp_path / "mod.py"
-    f.write_text("class Other:\n def meth(self): pass\n")
-
-    assert parse_method_signatures(f, "Missing") == {}
-
-
-def test_parse_method_signatures_includes_inherited_methods(tmp_path):
-    """
-    Given: A class that inherits from a base class defined in the same file.
-    When: _parse_method_signatures is called on the subclass.
-    Then: Methods from the base class are included alongside the subclass's own methods.
-    """
-    f = tmp_path / "mod.py"
-    f.write_text(
-        "class Base:\n def base_meth(self, x: int): pass\n"
-        "class Child(Base):\n def child_meth(self, y: str): pass\n"
-    )
-
-    result = parse_method_signatures(f, "Child")
-
-    assert "child_meth" in result
-    assert "base_meth" in result
-
-
-def test_call_signatures_match_continues_past_unknown_method():
-    """
-    Given: The call references a method not present in the candidate's signatures.
-    When: _call_signatures_match is called.
-    Then: The unknown method is skipped (returns True — no proven incompatibility).
-    """
-    calls = {"missing_meth": _CallInfo([None], frozenset())}
-    sigs = {"other_meth": _MethodSig([None], 1, 1, frozenset({"x"}), False)}
-
-    assert call_signatures_match(calls, sigs) is True
-
-
-def test_call_signatures_match_returns_false_for_too_few_positional_args():
-    """
-    Given: The call passes fewer positional args than the method requires.
-    When: _call_signatures_match is called.
-    Then: Returns False.
-    """
-    calls = {"meth": _CallInfo([], frozenset())}  # 0 args
-    sigs = {"meth": _MethodSig([None, None], 2, 2, frozenset({"a", "b"}), False)}  # min 2
-
-    assert call_signatures_match(calls, sigs) is False
-
-
-def test_call_signatures_match_returns_false_for_too_many_positional_args():
-    """
-    Given: The call passes more positional args than the method accepts.
-    When: _call_signatures_match is called.
-    Then: Returns False.
-    """
-    calls = {"meth": _CallInfo([None, None], frozenset())}  # 2 args
-    sigs = {"meth": _MethodSig([None], 1, 1, frozenset({"a"}), False)}  # max 1
-
-    assert call_signatures_match(calls, sigs) is False
-
-
-def test_load_package_objects_recovers_from_corrupted_pickle(package: Path):
-    """
-    Given: The disk cache for a package contains corrupt pickle data.
-    When: _load_package_objects is called.
-    Then: The bad cache is deleted, the package is re-parsed, and the correct result
-          is returned.
-    """
-    (package / "mod.py").write_text("class Recovered:\n pass\n")
-
-    sc = PackageFinder()
-    sc._load_package_objects("package")  # writes valid cache
-
-    sc.get_cache_path("package").write_bytes(b"not valid pickle data at all")
-
-    sc2 = PackageFinder()
-    result, _ = sc2._load_package_objects("package")
-
-    assert "Recovered" in result

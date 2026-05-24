@@ -2,6 +2,7 @@
 
 import ast
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -65,11 +66,13 @@ def delete_lines(path: Path, line_numbers: set[int]) -> list[str]:
     return removed
 
 
-_COMPOUND_FMT_SKIP = re.compile(r"^(\s*)import\s+\w+\s*;.*#\s*fmt:\s*skip\s*$")
+_COMPOUND_FMT_SKIP = re.compile(
+    r"^(\s*)(?:import\s+\w+|from\s+[\w.]+\s+import\s+\w+)\s*;.*#\s*fmt:\s*skip\s*$"
+)
 _PLACEHOLDER_RE = re.compile(r"^\s*pass  # _autoimport_save_(\d+)\s*$")
 
 
-def stash_compound_fmt_skip(files: list[Path]) -> dict[Path, dict[int, str]]:
+def stash_compound_fmt_skip(files: Sequence[Path]) -> dict[Path, dict[int, str]]:
     """Replace compound `import X; ...  # fmt: skip` lines with `pass` placeholders.
 
     ruff format splits compound statements even when marked # fmt: skip, which
@@ -100,7 +103,7 @@ def stash_compound_fmt_skip(files: list[Path]) -> dict[Path, dict[int, str]]:
     return stashed
 
 
-def restore_compound_fmt_skip(files: list[Path], stashed: dict[Path, dict[int, str]]) -> None:
+def restore_compound_fmt_skip(files: Sequence[Path], stashed: dict[Path, dict[int, str]]) -> None:
     """Restore compound `import X; ...  # fmt: skip` lines from placeholders."""
     for path in files:
         if path not in stashed:

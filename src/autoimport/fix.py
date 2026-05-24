@@ -1,11 +1,15 @@
 """Orchestration: run ruff, resolve missing imports, and rewrite files."""
 
 import json
+import logging
 import re
 import subprocess
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from autoimport.files import (
     delete_lines,
@@ -16,7 +20,7 @@ from autoimport.files import (
 from autoimport.finder import PackageFinder
 
 
-def _expand_paths(paths: list[Path]) -> list[Path]:
+def _expand_paths(paths: Sequence[Path]) -> list[Path]:
     result = []
     for path in paths:
         if path.is_dir():
@@ -26,7 +30,7 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
     return result
 
 
-def fix_files(files: list[Path], config: dict[str, Any] | None = None) -> None:
+def fix_files(files: Sequence[Path], config: dict[str, Any] | None = None) -> None:
     fnames = list(map(str, files))
     expanded = _expand_paths(files)
 
@@ -46,7 +50,12 @@ def fix_files(files: list[Path], config: dict[str, Any] | None = None) -> None:
             capture_output=True,
             text=True,
         )
-        messages = json.loads(result.stdout) if result.stdout else []
+        if result.stdout:
+            messages = json.loads(result.stdout)
+        else:
+            if result.returncode not in (0, 1):
+                log.debug("ruff check exited %d with no stdout: %s", result.returncode, result.stderr)
+            messages = []
 
         packages_missing: set[str] = set()
         files_missing: dict[Path, set[str]] = defaultdict(set)

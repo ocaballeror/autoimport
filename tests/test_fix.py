@@ -1,8 +1,8 @@
 """Tests for fix_files and file manipulation helpers."""
 
 import json
+import tempfile
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from textwrap import dedent
 from unittest.mock import MagicMock, patch
 
@@ -14,16 +14,11 @@ from autoimport.fix import fix_files
 
 
 def fix_code(source: str, config: dict | None = None):
-    with NamedTemporaryFile("w+", suffix=".py", delete=False) as tmp:
-        tmp.write(source)
-
-    tmp_path = Path(tmp.name)
-
-    try:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir) / "tmp.py"
+        tmp_path.write_text(source)
         fix_files([tmp_path], config=config)
         return tmp_path.read_text()
-    finally:
-        tmp_path.unlink()
 
 
 def test_fix_code_adds_missing_import():

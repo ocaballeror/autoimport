@@ -342,6 +342,40 @@ class PackageFinder:
                     file_path, mod_name
                 )
 
+        objects, definition_files = self._assemble_objects(module_defs, module_reexports, all_files)
+
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        tmp_cache = cache_path.with_suffix(".pkl.tmp")
+        try:
+            tmp_cache.write_bytes(
+                pickle.dumps(
+                    {
+                        "fingerprint": current_fp,
+                        "objects": objects,
+                        "def_files": definition_files,
+                        "modules": {
+                            mod_name: {
+                                "mtime": current_fp[mod_name],
+                                "names": module_defs[mod_name],
+                                "reexports": module_reexports[mod_name],
+                            }
+                            for mod_name in all_files
+                        },
+                    }
+                )
+            )
+            tmp_cache.replace(cache_path)
+        except Exception:
+            tmp_cache.unlink(missing_ok=True)
+
+        return objects, definition_files
+
+    def _assemble_objects(
+        self,
+        module_defs: dict[str, set[str]],
+        module_reexports: dict[str, dict[str, str]],
+        all_files: dict[str, tuple[Path, bool]],
+    ) -> tuple[dict[str, list[str]], dict[str, list[Path]]]:
         objects: dict[str, list[str]] = {}
         definition_files: dict[str, list[Path]] = {}
 
@@ -373,29 +407,5 @@ class PackageFinder:
                     continue
                 objects.setdefault(name, []).append(f"from {mod_name} import {name}")
                 definition_files.setdefault(name, []).append(file_path)
-
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        tmp_cache = cache_path.with_suffix(".pkl.tmp")
-        try:
-            tmp_cache.write_bytes(
-                pickle.dumps(
-                    {
-                        "fingerprint": current_fp,
-                        "objects": objects,
-                        "def_files": definition_files,
-                        "modules": {
-                            mod_name: {
-                                "mtime": current_fp[mod_name],
-                                "names": module_defs[mod_name],
-                                "reexports": module_reexports[mod_name],
-                            }
-                            for mod_name in all_files
-                        },
-                    }
-                )
-            )
-            tmp_cache.replace(cache_path)
-        except Exception:
-            tmp_cache.unlink(missing_ok=True)
 
         return objects, definition_files

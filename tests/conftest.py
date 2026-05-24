@@ -1,10 +1,36 @@
 """Store the classes and fixtures used throughout the tests."""
 
+import os
 import pathlib
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture
+def package(tmp_path: Path):
+    (tmp_path / "pyproject.toml").touch()
+
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "__init__.py").touch()
+
+    sub = package / "sub"
+    sub.mkdir()
+    (sub / "__init__.py").touch()
+
+    cwd = os.getcwd()
+    sys.path.append(str(tmp_path))
+
+    try:
+        os.chdir(tmp_path)
+        yield package
+    finally:
+        os.chdir(cwd)
+        sys.path.remove(str(tmp_path))
+        shutil.rmtree(".autoimport_cache", ignore_errors=True)
 
 
 @pytest.fixture()
