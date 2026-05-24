@@ -31,6 +31,7 @@ common_statements: dict[str, str] = {
     "datetime": "from datetime import datetime",
     "logger": "from loguru import logger",
     "patch": "from unittest.mock import patch",
+    "sa": "import sqlalchemy as sa",
     "sp": "import subprocess as sp",
     "suppress": "from contextlib import suppress",
     "timedelta": "from datetime import timedelta",
