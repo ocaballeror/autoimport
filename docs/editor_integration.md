@@ -25,7 +25,7 @@ You'll need to add the following lines to your project's
 
 ```yaml
 repos:
-  - repo: https://github.com/lyz-code/autoimport/
+  - repo: https://github.com/ocaballeror/autoimport/
     rev: master
     hooks:
       - id: autoimport

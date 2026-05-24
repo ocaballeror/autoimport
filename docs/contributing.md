@@ -5,7 +5,7 @@ depending on your programming skills there are different ways to do so.
 
 There are several ways you can contribute:
 
-* [Open an issue](https://github.com/lyz-code/autoimport/issues/new) if you encounter
+* [Open an issue](https://github.com/ocaballeror/autoimport/issues/new) if you encounter
     any bug or to let us know if you want a new feature to be implemented.
 * Spread the word about the program.
 * Review the [documentation](https://lyz-code.github.io/autoimport) and try to improve
@@ -14,11 +14,11 @@ There are several ways you can contribute:
 # I know how to program in Python
 
 If you have some python knowledge there are some additional ways to contribute.
-We've ordered the [issues](https://github.com/lyz-code/autoimport/issues) in
-[milestones](https://github.com/lyz-code/autoimport/milestones), check the issues in
+We've ordered the [issues](https://github.com/ocaballeror/autoimport/issues) in
+[milestones](https://github.com/ocaballeror/autoimport/milestones), check the issues in
 the smaller one, as it's where we'll be spending most of our efforts. Try the
 [good first
-issues](https://github.com/lyz-code/autoimport/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22),
+issues](https://github.com/ocaballeror/autoimport/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22),
 as they are expected to be easier to get into the project.
 
 We develop the program with
@@ -40,7 +40,7 @@ don't let this fact discourage you from contributing:
 
 Questions, feature requests and bug reports are all welcome as issues.
 **To report a security vulnerability, please see our [security
-policy](https://github.com/lyz-code/autoimport/security/policy) instead.**
+policy](https://github.com/ocaballeror/autoimport/security/policy) instead.**
 
 To make it as simple as possible for us to help you, please include the output
 of the following call in your issue:
@@ -64,7 +64,7 @@ improvements release in a matter of days or weeks.
     issue to discuss the change before creating a pull request.
 
 If you're looking for something to get your teeth into, check out the ["help
-wanted"](https://github.com/lyz-code/autoimport/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22)
+wanted"](https://github.com/ocaballeror/autoimport/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22)
 label on github.
 
 # Development facilities

@@ -1,6 +1,6 @@
-[![Actions Status](https://github.com/lyz-code/autoimport/workflows/Tests/badge.svg)](https://github.com/lyz-code/autoimport/actions)
-[![Actions Status](https://github.com/lyz-code/autoimport/workflows/Build/badge.svg)](https://github.com/lyz-code/autoimport/actions)
-[![Coverage Status](https://coveralls.io/repos/github/lyz-code/autoimport/badge.svg?branch=main)](https://coveralls.io/github/lyz-code/autoimport?branch=main)
+[![Actions Status](https://github.com/ocaballeror/autoimport/workflows/Tests/badge.svg)](https://github.com/ocaballeror/autoimport/actions)
+[![Actions Status](https://github.com/ocaballeror/autoimport/workflows/Build/badge.svg)](https://github.com/ocaballeror/autoimport/actions)
+[![Coverage Status](https://coveralls.io/repos/github/ocaballeror/autoimport/badge.svg?branch=main)](https://coveralls.io/github/ocaballeror/autoimport?branch=main)
 
 Autoimport missing python libraries.
 
@@ -140,7 +140,7 @@ which will prevent `autoimport` from removing any import statements.
 ## Moving the imports to the top
 
 There are going to be import cases that may not work, if you find one, please
-[open an issue](https://github.com/lyz-code/autoimport/issues/new?labels=bug&template=bug.md).
+[open an issue](https://github.com/ocaballeror/autoimport/issues/new?labels=bug&template=bug.md).
 
 While we fix it you can write the import statement wherever you are in the file
 and the next time you run `autoimport` it will get moved to the top.

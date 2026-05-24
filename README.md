@@ -1,8 +1,8 @@
 # Autoimport
 
-[![Actions Status](https://github.com/lyz-code/autoimport/workflows/Tests/badge.svg)](https://github.com/lyz-code/autoimport/actions)
-[![Actions Status](https://github.com/lyz-code/autoimport/workflows/Build/badge.svg)](https://github.com/lyz-code/autoimport/actions)
-[![Coverage Status](https://coveralls.io/repos/github/lyz-code/autoimport/badge.svg?branch=main)](https://coveralls.io/github/lyz-code/autoimport?branch=main)
+[![Actions Status](https://github.com/ocaballeror/autoimport/workflows/Tests/badge.svg)](https://github.com/ocaballeror/autoimport/actions)
+[![Actions Status](https://github.com/ocaballeror/autoimport/workflows/Build/badge.svg)](https://github.com/ocaballeror/autoimport/actions)
+[![Coverage Status](https://coveralls.io/repos/github/ocaballeror/autoimport/badge.svg?branch=main)](https://coveralls.io/github/ocaballeror/autoimport?branch=main)
 
 Autoimport missing python libraries.
 
