@@ -33,7 +33,6 @@ def test_corrects_one_file(runner: CliRunner, tmp_path: Path) -> None:
     assert test_file.read_text() == fixed_source
 
 
-@pytest.mark.secondary()
 def test_corrects_three_files(runner: CliRunner, tmp_path: Path) -> None:
     """Correct the source code of multiple files."""
     test_files = []
