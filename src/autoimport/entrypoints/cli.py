@@ -6,8 +6,6 @@ from typing import IO, Any
 
 import click
 
-# Migrate away from xdg to xdg-base-dirs once only Python >= 3.10 is supported
-# https://github.com/lyz-code/autoimport/issues/239
 import xdg
 from maison import UserConfig
 
@@ -25,7 +23,6 @@ def cli(
     config_file: str | None = None,
 ) -> None:
     """Corrects the source code of the specified files."""
-    # Compose configuration
     config_files: list[str] = []
 
     global_config_path = xdg.xdg_config_home() / "autoimport" / "config.toml"

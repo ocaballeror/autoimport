@@ -90,9 +90,7 @@ class PackageFinder:
 
         for package in all_packages:
             objects, def_files = self._extract_package_objects_with_files(package)
-            assert objects.keys() == def_files.keys()
             for obj, imports in objects.items():
-                assert len(imports) == len(def_files[obj])
                 if obj in names:
                     self.import_cache[obj].update(set(zip(imports, def_files[obj])))
 
@@ -110,7 +108,7 @@ class PackageFinder:
 
     @cache
     def _find_project_packages(self, where: Path | None = None) -> list[str]:
-        if not where:
+        if where is None:
             try:
                 where = here()
             except RuntimeError:
@@ -190,7 +188,7 @@ class PackageFinder:
         return uses
 
     def _find_package_in_our_project(self, name: str, file: Path) -> str | None:
-        if not self.import_cache:
+        if name not in self.import_cache:
             self.index_packages([name])
 
         candidates = self.import_cache[name]
@@ -323,15 +321,19 @@ class PackageFinder:
             elif isinstance(node, ast.TypeAlias):
                 if isinstance(node.name, ast.Name) and not node.name.id.startswith("_"):
                     names.add(node.name.id)
-            elif isinstance(node, ast.ImportFrom) and node.level == 0:
-                if node.module == module[0]:
-                    level = node.level
-                    if level > len(module_parts):
-                        continue
-                    base_parts = module_parts[: len(module_parts) - (level - 1)]
-                    source = ".".join(base_parts) + ("." + node.module if node.module else "")
-                else:
+            elif isinstance(node, ast.ImportFrom):
+                if node.level == 0:
                     source = node.module
+                else:
+                    # Relative import: resolve against the current module's package.
+                    # Init files represent the package itself, so level=1 means "this package";
+                    # non-init files need to go up one extra level.
+                    is_init = file.name == "__init__.py"
+                    strip = node.level - (1 if is_init else 0)
+                    base_parts = module_parts[:-strip] if strip > 0 else module_parts
+                    if not base_parts:
+                        continue
+                    source = ".".join(base_parts) + ("." + node.module if node.module else "")
 
                 for alias in node.names:
                     if alias.name == "*" or alias.asname is not None:

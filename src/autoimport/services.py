@@ -36,7 +36,7 @@ def _find_header_end(lines: list[str]) -> int:
     return i
 
 
-def insert_imports(file: Path, imports: list[str]) -> str:
+def insert_imports(file: Path, imports: list[str]) -> None:
     """Insert import statements after the file header (shebang, comments, docstring)."""
     source = file.read_text()
     lines = source.splitlines(keepends=True)
@@ -53,7 +53,7 @@ def insert_imports(file: Path, imports: list[str]) -> str:
     file.write_text(source)
 
 
-def delete_lines(path: Path, line_numbers: list[int]) -> list[str]:
+def delete_lines(path: Path, line_numbers: set[int]) -> list[str]:
     removed = []
     with NamedTemporaryFile(mode="w", delete=False, encoding="utf-8") as tmp:
         with path.open("r", encoding="utf-8") as src:
@@ -67,8 +67,71 @@ def delete_lines(path: Path, line_numbers: list[int]) -> list[str]:
     return removed
 
 
+_COMPOUND_FMT_SKIP = re.compile(r"^(\s*)import\s+\w+\s*;.*#\s*fmt:\s*skip\s*$")
+# Pattern to find placeholder lines we inserted
+_PLACEHOLDER_RE = re.compile(r"^(\s*)pass  # _autoimport_save_(\d+)\s*$")
+
+
+def _stash_compound_fmt_skip(
+    files: list[Path],
+) -> dict[Path, dict[int, str]]:
+    """Replace compound `import X; ...  # fmt: skip` lines with `pass` placeholders.
+
+    ruff format splits compound statements even when marked # fmt: skip, which
+    would cause autoimport to move the import to the top. Replacing the compound
+    line with an inert `pass` placeholder prevents ruff from touching it, and the
+    original line is restored after all processing.
+    """
+    stashed: dict[Path, dict[int, str]] = {}
+    for path in files:
+        try:
+            lines = path.read_text().splitlines(keepends=True)
+            new_lines: list[str] = []
+            path_stash: dict[int, str] = {}
+            for line in lines:
+                m = _COMPOUND_FMT_SKIP.match(line.rstrip("\n"))
+                if m:
+                    idx = len(path_stash)
+                    indent = m.group(1)
+                    path_stash[idx] = line if line.endswith("\n") else line + "\n"
+                    new_lines.append(f"{indent}pass  # _autoimport_save_{idx}\n")
+                else:
+                    new_lines.append(line)
+            if path_stash:
+                stashed[path] = path_stash
+                path.write_text("".join(new_lines))
+        except OSError:
+            pass
+    return stashed
+
+
+def _restore_compound_fmt_skip(
+    files: list[Path], stashed: dict[Path, dict[int, str]]
+) -> None:
+    """Restore compound `import X; ...  # fmt: skip` lines from placeholders."""
+    for path in files:
+        if path not in stashed:
+            continue
+        path_stash = stashed[path]
+        try:
+            lines = path.read_text().splitlines(keepends=True)
+            new_lines: list[str] = []
+            for line in lines:
+                m = _PLACEHOLDER_RE.match(line.rstrip("\n"))
+                if m:
+                    idx = int(m.group(2))
+                    new_lines.append(path_stash[idx])
+                else:
+                    new_lines.append(line)
+            path.write_text("".join(new_lines))
+        except OSError:
+            pass
+
+
 def fix_files(files: list[Path], config: dict[str, Any] | None = None) -> None:
     fnames = list(map(str, files))
+
+    stashed = _stash_compound_fmt_skip(files)
 
     subprocess.check_call(["ruff", "format", "--silent", *fnames])
     result = subprocess.run(
@@ -88,7 +151,7 @@ def fix_files(files: list[Path], config: dict[str, Any] | None = None) -> None:
 
     packages_missing: set[str] = set()
     files_missing: dict[Path, set[str]] = defaultdict(set)
-    lines_to_delete: dict[Path, list[int]] = defaultdict(list)
+    lines_to_delete: dict[Path, set[int]] = defaultdict(set)
     for msg in messages:
         if msg["fix"] is not None:
             continue
@@ -104,7 +167,7 @@ def fix_files(files: list[Path], config: dict[str, Any] | None = None) -> None:
             files_missing[fname].add(name)
         elif msg["code"] == "E402":
             for lineno in range(msg["location"]["row"], msg["end_location"]["row"] + 1):
-                lines_to_delete[fname].append(lineno)
+                lines_to_delete[fname].add(lineno)
 
     imports_to_add: dict[Path, list[str]] = defaultdict(list)
     imports_to_add.update(
@@ -127,3 +190,5 @@ def fix_files(files: list[Path], config: dict[str, Any] | None = None) -> None:
         ["ruff", "check", "--exit-zero", "--silent", "--select", "I001,F401", "--fix", *fnames]
     )
     subprocess.check_call(["ruff", "format", "--silent", *fnames])
+
+    _restore_compound_fmt_skip(files, stashed)
