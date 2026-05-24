@@ -11,7 +11,7 @@ dependencies = [
     "maison>=2.0.2",
     "pyprojroot>=0.3.0",
     "ruff>=0.15.14",
-    "xdg>=6.0.0",
+    "xdg-base-dirs>=6.0.2",
 ]
 name = "autoimport"
 description = "Autoimport missing python libraries."

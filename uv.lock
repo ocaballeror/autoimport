@@ -64,7 +64,7 @@ dependencies = [
     { name = "maison" },
     { name = "pyprojroot" },
     { name = "ruff" },
-    { name = "xdg" },
+    { name = "xdg-base-dirs" },
 ]
 
 [package.dev-dependencies]
@@ -93,7 +93,7 @@ requires-dist = [
     { name = "maison", specifier = ">=2.0.2" },
     { name = "pyprojroot", specifier = ">=0.3.0" },
     { name = "ruff", specifier = ">=0.15.14" },
-    { name = "xdg", specifier = ">=6.0.0" },
+    { name = "xdg-base-dirs", specifier = ">=6.0.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1166,10 +1166,10 @@ wheels = [
 ]
 
 [[package]]
-name = "xdg"
-version = "6.0.0"
+name = "xdg-base-dirs"
+version = "6.0.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2a/b9/0e6e6f19fb75cf5e1758f4f33c1256738f718966700cffc0fde2f966218b/xdg-6.0.0.tar.gz", hash = "sha256:24278094f2d45e846d1eb28a2ebb92d7b67fc0cab5249ee3ce88c95f649a1c92", size = 3453, upload-time = "2023-02-27T19:27:44.309Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/d0/bbe05a15347538aaf9fa5b51ac3b97075dfb834931fcb77d81fbdb69e8f6/xdg_base_dirs-6.0.2.tar.gz", hash = "sha256:950504e14d27cf3c9cb37744680a43bf0ac42efefc4ef4acf98dc736cab2bced", size = 4085, upload-time = "2024-10-19T14:35:08.114Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/54/3516c1cf349060fc3578686d271eba242f10ec00b4530c2985af9faac49b/xdg-6.0.0-py3-none-any.whl", hash = "sha256:df3510755b4395157fc04fc3b02467c777f3b3ca383257397f09ab0d4c16f936", size = 3855, upload-time = "2023-02-27T19:27:42.151Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/03/030b47fd46b60fc87af548e57ff59c2ca84b2a1dadbe721bb0ce33896b2e/xdg_base_dirs-6.0.2-py3-none-any.whl", hash = "sha256:3c01d1b758ed4ace150ac960ac0bd13ce4542b9e2cdf01312dcda5012cfebabe", size = 4747, upload-time = "2024-10-19T14:35:05.931Z" },
 ]

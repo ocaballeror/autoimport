@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import IO, Any
 
 import click
-import xdg
+import xdg_base_dirs
 from maison import UserConfig
 
 from autoimport import services
@@ -24,7 +24,7 @@ def cli(
     """Corrects the source code of the specified files."""
     config_files: list[str] = []
 
-    global_config_path = xdg.xdg_config_home() / "autoimport" / "config.toml"
+    global_config_path = xdg_base_dirs.xdg_config_home() / "autoimport" / "config.toml"
     if global_config_path.is_file():
         config_files.append(str(global_config_path))
 
