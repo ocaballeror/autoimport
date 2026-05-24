@@ -243,6 +243,57 @@ def test_extraction_aliased_reexport_does_not_promote_original(package: Path):
     assert result == {"Foo": ["from package.sub.inner import Foo"]}
 
 
+def test_extraction_picks_up_names_listed_in___all__(package: Path):
+    """
+    Given: A module that lists names in __all__ but does not define them as
+           top-level statements (they could come from a wildcard re-export, for
+           instance).
+    When: extract package objects is called.
+    Then: The names listed in __all__ are still exposed as importable.
+    """
+    (package / "things.py").write_text(
+        "from .other import inner_thing\n__all__ = ['inner_thing', 'StringOnly']\n"
+    )
+
+    result = extract_package_objects("package")
+
+    assert "inner_thing" in result
+    # Even if StringOnly isn't defined anywhere, listing it in __all__ should
+    # surface it as an export from this module.
+    assert "StringOnly" in result
+    assert "from package.things import StringOnly" in result["StringOnly"]
+
+
+def test_extraction_picks_up_conditional_imports(package: Path):
+    """
+    Given: A module that defines names inside `try/except ImportError` and
+           `if sys.version_info:` blocks at the top level.
+    When: extract package objects is called.
+    Then: Those names are still collected as exports.
+    """
+    (package / "compat.py").write_text(
+        "import sys\n"
+        "if sys.version_info >= (3, 11):\n"
+        "    def new_feature():\n"
+        "        pass\n"
+        "else:\n"
+        "    def legacy_feature():\n"
+        "        pass\n"
+        "try:\n"
+        "    class FastImpl:\n"
+        "        pass\n"
+        "except ImportError:\n"
+        "    class FastImpl:  # noqa\n"
+        "        pass\n"
+    )
+
+    result = extract_package_objects("package")
+
+    assert "new_feature" in result
+    assert "legacy_feature" in result
+    assert "FastImpl" in result
+
+
 def test_extraction_syntax_error_in_module_is_skipped(package: Path):
     """
     Given: A module with a syntax error alongside valid modules.
@@ -748,6 +799,27 @@ def test_find_package_in_libraries_resolves_typing_names():
     assert finder._find_package_in_libraries("TypeVar") == "from typing import TypeVar"
 
 
+def test_find_package_in_libraries_resolves_stdlib_names():
+    """
+    Given: Names from extended stdlib libraries in common_libraries.
+    When: _find_package_in_libraries is called.
+    Then: They resolve to imports from the appropriate stdlib module.
+
+    Note: names that exist in both ``typing`` and another stdlib module
+    (Counter, OrderedDict, defaultdict, deque, Pattern, Match, ...) live in
+    ``common_statements`` to disambiguate; this test deliberately uses names
+    that exist in exactly one of ``common_libraries``.
+    """
+    finder = PackageFinder()
+    assert finder._find_package_in_libraries("reduce") == "from functools import reduce"
+    assert finder._find_package_in_libraries("wraps") == "from functools import wraps"
+    assert finder._find_package_in_libraries("dataclass") == "from dataclasses import dataclass"
+    assert finder._find_package_in_libraries("field") == "from dataclasses import field"
+    assert finder._find_package_in_libraries("contextmanager") == (
+        "from contextlib import contextmanager"
+    )
+
+
 def test_find_project_packages_returns_empty_when_no_project_root():
     """
     Given: No pyproject.toml (or other marker) is found above the cwd.
@@ -758,6 +830,25 @@ def test_find_project_packages_returns_empty_when_no_project_root():
         sc = PackageFinder()
         result = sc._find_project_packages()
     assert result == []
+
+
+def test_read_project_dependencies_uses_fallback_map_for_known_dists(tmp_path):
+    """
+    Given: A dist whose import name cannot be derived by the lowercase/underscore
+           heuristic (e.g. pyyaml → yaml) and is not installed locally.
+    When: _read_project_dependencies is called.
+    Then: The static fallback map is consulted to resolve the import name.
+    """
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\ndependencies = ["pyyaml", "beautifulsoup4", "python-dateutil"]\n'
+    )
+    with patch(
+        "autoimport.finder.importlib.metadata.packages_distributions", return_value={}
+    ):
+        result = PackageFinder._read_project_dependencies(tmp_path)
+    assert "yaml" in result
+    assert "bs4" in result
+    assert "dateutil" in result
 
 
 def test_read_project_dependencies_falls_back_when_metadata_raises(tmp_path):

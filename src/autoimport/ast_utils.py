@@ -39,43 +39,70 @@ def parse_module_definitions(file: Path, module: str) -> tuple[set[str], dict[st
         return set(), {}
 
     module_parts = module.split(".")
-
+    is_init = file.name == "__init__.py"
     names: set[str] = set()
     reexports: dict[str, str] = {}
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if not node.name.startswith("_"):
-                names.add(node.name)
-        elif isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and not target.id.startswith("_"):
-                    names.add(target.id)
-        elif isinstance(node, ast.AnnAssign):
-            if isinstance(node.target, ast.Name) and not node.target.id.startswith("_"):
-                names.add(node.target.id)
-        elif isinstance(node, ast.TypeAlias):
-            if isinstance(node.name, ast.Name) and not node.name.id.startswith("_"):
-                names.add(node.name.id)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level == 0:
-                source = node.module
-                if not source:
-                    continue
-            else:
-                # Relative import: resolve against the current module's package.
-                # Init files represent the package itself, so level=1 means "this package";
-                # non-init files need to go up one extra level.
-                is_init = file.name == "__init__.py"
-                strip = node.level - (1 if is_init else 0)
-                base_parts = module_parts[:-strip] if strip > 0 else module_parts
-                if not base_parts:
-                    continue
-                source = ".".join(base_parts) + ("." + node.module if node.module else "")
 
-            for alias in node.names:
-                if alias.name == "*" or alias.asname is not None:
-                    continue
-                reexports[alias.name] = source
+    def collect_all_entries(value: ast.expr) -> None:
+        if not isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+            return
+        for elt in value.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                if not elt.value.startswith("_"):
+                    names.add(elt.value)
+
+    def process(stmts: list[ast.stmt]) -> None:
+        for node in stmts:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if not node.name.startswith("_"):
+                    names.add(node.name)
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if not isinstance(target, ast.Name):
+                        continue
+                    if target.id == "__all__":
+                        collect_all_entries(node.value)
+                    elif not target.id.startswith("_"):
+                        names.add(target.id)
+            elif isinstance(node, ast.AnnAssign):
+                if isinstance(node.target, ast.Name):
+                    if node.target.id == "__all__" and node.value is not None:
+                        collect_all_entries(node.value)
+                    elif not node.target.id.startswith("_"):
+                        names.add(node.target.id)
+            elif isinstance(node, ast.TypeAlias):
+                if isinstance(node.name, ast.Name) and not node.name.id.startswith("_"):
+                    names.add(node.name.id)
+            elif isinstance(node, ast.ImportFrom):
+                if node.level == 0:
+                    source = node.module
+                    if not source:
+                        continue
+                else:
+                    # Relative import: resolve against the current module's package.
+                    # Init files represent the package itself, so level=1 means "this package";
+                    # non-init files need to go up one extra level.
+                    strip = node.level - (1 if is_init else 0)
+                    base_parts = module_parts[:-strip] if strip > 0 else module_parts
+                    if not base_parts:
+                        continue
+                    source = ".".join(base_parts) + ("." + node.module if node.module else "")
+
+                for alias in node.names:
+                    if alias.name == "*" or alias.asname is not None:
+                        continue
+                    reexports[alias.name] = source
+            elif isinstance(node, ast.If):
+                process(node.body)
+                process(node.orelse)
+            elif isinstance(node, (ast.Try, ast.TryStar)):
+                process(node.body)
+                for handler in node.handlers:
+                    process(handler.body)
+                process(node.orelse)
+                process(node.finalbody)
+
+    process(tree.body)
     return names, reexports
 
 

@@ -80,7 +80,6 @@ def test_correct_mix_dir_and_files(runner: CliRunner, test_dir: Path, tmp_path: 
     assert test_file.read_text() == fixed_source
 
 
-@pytest.mark.xfail(reason="stdin support removed for now")
 def test_corrects_code_from_stdin(runner: CliRunner) -> None:
     """Correct the source code passed as stdin."""
     source = "os.getcwd()"
@@ -96,6 +95,27 @@ def test_corrects_code_from_stdin(runner: CliRunner) -> None:
 
     assert result.exit_code == 0
     assert result.stdout == fixed_source
+
+
+def test_stdin_cannot_be_mixed_with_paths(runner: CliRunner, tmp_path: Path) -> None:
+    """Mixing '-' with other file paths is rejected."""
+    test_file = tmp_path / "source.py"
+    test_file.write_text("os.getcwd()")
+
+    result = runner.invoke(cli, ["-", str(test_file)], input="x = 1")
+
+    assert result.exit_code != 0
+    assert "cannot be mixed" in result.output
+
+
+def test_nonexistent_path_is_rejected(runner: CliRunner, tmp_path: Path) -> None:
+    """A path that does not exist is rejected before fix_files is invoked."""
+    missing = tmp_path / "does_not_exist.py"
+
+    result = runner.invoke(cli, [str(missing)])
+
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
 
 
 def test_pyproject_common_statements(runner: CliRunner, tmp_path: Path) -> None:

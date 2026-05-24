@@ -695,23 +695,21 @@ def test_fix_autoimports_objects_defined_in_the_root_of_the_package():
     assert result == fixed_source
 
 
-@pytest.mark.xfail(reason="unsupported __all__")
 def test_fix_autoimports_objects_defined_in___all__special_variable():
     """
-    Given: Some missing packages in the __all__ variable
+    Given: Some missing packages in the __all__ variable.
     When: Fix code is run.
-    Then: The import is done
+    Then: The import is done for the name listed in __all__.
     """
     source = dedent(
         """\
-        __all__ = ['fix_code']"""
+        __all__ = ['fix_files']"""
     )
     fixed_source = dedent(
         """\
-        from autoimport import fix_code
+        from autoimport import fix_files
 
-
-        __all__ = ["fix_code"]
+        __all__ = ["fix_files"]
         """
     )
 

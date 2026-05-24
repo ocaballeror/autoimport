@@ -24,6 +24,31 @@ from autoimport.ast_utils import (
 )
 from autoimport.constants import common_libraries, common_statements
 
+# Fallback mapping for distributions whose import name cannot be derived from
+# the distribution name by the standard lowercase/underscore heuristic, used
+# only when importlib.metadata.packages_distributions has no entry for the dist
+# (typically: dependency is declared in pyproject but not installed locally).
+_DIST_FALLBACK_MAP: dict[str, str] = {
+    "pyyaml": "yaml",
+    "python_dateutil": "dateutil",
+    "pillow": "PIL",
+    "beautifulsoup4": "bs4",
+    "scikit_learn": "sklearn",
+    "scikit_image": "skimage",
+    "msgpack_python": "msgpack",
+    "opencv_python": "cv2",
+    "opencv_python_headless": "cv2",
+    "opencv_contrib_python": "cv2",
+    "python_jose": "jose",
+    "python_magic": "magic",
+    "grpcio": "grpc",
+    "psycopg2_binary": "psycopg2",
+    "discord_py": "discord",
+    "google_cloud_storage": "google.cloud.storage",
+    "google_cloud_bigquery": "google.cloud.bigquery",
+    "protobuf": "google.protobuf",
+}
+
 
 class PackageFinder:
     """Finds the correct import statement for a given object name."""
@@ -121,16 +146,26 @@ class PackageFinder:
 
         try:
             pkg_dist = importlib.metadata.packages_distributions()
-            dist_to_import: dict[str, str] = {}
-            for pkg_name, dists in pkg_dist.items():
-                for d in dists:
-                    dist_to_import[d.lower().replace("-", "_")] = pkg_name
-            return [
-                dist_to_import.get(d.lower().replace("-", "_"), d.lower().replace("-", "_"))
-                for d in dist_names
-            ]
         except Exception:
-            return [d.lower().replace("-", "_") for d in dist_names]
+            pkg_dist = {}
+
+        dist_to_imports: dict[str, list[str]] = defaultdict(list)
+        for pkg_name, dists in pkg_dist.items():
+            for d in dists:
+                key = d.lower().replace("-", "_")
+                if pkg_name not in dist_to_imports[key]:
+                    dist_to_imports[key].append(pkg_name)
+
+        result: list[str] = []
+        for d in dist_names:
+            key = d.lower().replace("-", "_")
+            if key in dist_to_imports:
+                result.extend(dist_to_imports[key])
+            elif key in _DIST_FALLBACK_MAP:
+                result.append(_DIST_FALLBACK_MAP[key])
+            else:
+                result.append(key)
+        return result
 
     def _find_package_in_our_project(self, name: str, file: Path) -> str | None:
         if name not in self.import_cache:
@@ -312,22 +347,19 @@ class PackageFinder:
                 objects.setdefault(name, []).append(f"from {current} import {name}")
                 definition_files.setdefault(name, []).append(file_path)
 
-        # Also include names re-exported from C extensions (no .py file anywhere in sys.path).
-        # Example: typing.py does `from _typing import Union`, so Union should resolve to
-        # `from typing import Union` even though _typing itself is inaccessible as source.
+        # Surface names re-exported from private C-extension modules (e.g.
+        # `typing.py` does `from _typing import Union`, so Union should resolve
+        # to `from typing import Union`). Restricted to underscore-prefixed
+        # sources, which are the convention for private C-extension backends —
+        # public stdlib C extensions like `itertools` are reachable directly
+        # and should not be funneled through the re-exporting module.
         for mod_name, reexports in module_reexports.items():
             file_path = all_files[mod_name][0]
             for name, source in reexports.items():
                 if source in all_files or name in objects:
                     continue
-                # Skip if source has a .py file somewhere in sys.path — it's a regular
-                # module and the name should be imported from there directly.
-                source_parts = source.split(".")
-                if any(
-                    (Path(p, *source_parts).with_suffix(".py")).is_file()
-                    or (Path(p, *source_parts) / "__init__.py").is_file()
-                    for p in sys.path
-                ):
+                top_level = source.split(".", 1)[0]
+                if not top_level.startswith("_"):
                     continue
                 objects.setdefault(name, []).append(f"from {mod_name} import {name}")
                 definition_files.setdefault(name, []).append(file_path)
