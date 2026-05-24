@@ -9,9 +9,23 @@ import sys
 from collections import defaultdict
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from pyprojroot import here
+
+
+class _CallInfo(NamedTuple):
+    positional_types: list[str | None]
+    keyword_names: frozenset[str]
+
+
+class _MethodSig(NamedTuple):
+    param_types: list[str | None]
+    min_positional: int
+    max_positional: int | None  # None = unlimited via *args
+    all_param_names: frozenset[str]
+    has_var_keyword: bool
+
 
 common_libraries = ("typing",)
 common_statements: dict[str, str] = {
@@ -148,19 +162,33 @@ class PackageFinder:
             return list(candidates)[0][0]
 
         usage = self._find_usage(file, name)
-        if not usage:
+        method_calls = self._find_method_calls(file, name)
+
+        if not usage and not method_calls:
             return statistics.mode([line for line, _ in candidates])
 
-        matching_candidates = []
-        for line, def_file in candidates:
-            attrs = self._parse_class_attributes(def_file, name)
-            if all(attr in attrs for attr in usage):
-                matching_candidates.append(line)
+        attr_filtered = [
+            (line, def_file) for line, def_file in candidates
+            if not usage or all(attr in self._parse_class_attributes(def_file, name) for attr in usage)
+        ]
 
-        if matching_candidates:
-            return statistics.mode(matching_candidates)
+        if not attr_filtered:
+            return statistics.mode([line for line, _ in candidates])
 
-        return statistics.mode([line for line, _ in candidates])
+        if len(attr_filtered) == 1 or not method_calls:
+            return statistics.mode([line for line, _ in attr_filtered])
+
+        sig_filtered = [
+            line for line, def_file in attr_filtered
+            if self._call_signatures_match(
+                method_calls, self._parse_method_signatures(def_file, name)
+            )
+        ]
+
+        if sig_filtered:
+            return statistics.mode(sig_filtered)
+
+        return statistics.mode([line for line, _ in attr_filtered])
 
     @staticmethod
     @cache
@@ -280,9 +308,13 @@ class PackageFinder:
         except Exception:
             return set()
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef) or node.name != class_name:
-                continue
+        classes: dict[str, ast.ClassDef] = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef)
+        }
+
+        def extract_attrs(node: ast.ClassDef, seen: set[str]) -> set[str]:
             attrs: set[str] = set()
             for item in node.body:
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -309,8 +341,139 @@ class PackageFinder:
                             attrs.add(target.id)
                 elif isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
                     attrs.add(item.target.id)
+            for base in node.bases:
+                if isinstance(base, ast.Name) and base.id in classes and base.id not in seen:
+                    seen.add(base.id)
+                    attrs |= extract_attrs(classes[base.id], seen)
             return attrs
-        return set()
+
+        if class_name not in classes:
+            return set()
+
+        return extract_attrs(classes[class_name], {class_name})
+
+    @staticmethod
+    def _infer_arg_type(node: ast.expr) -> str | None:
+        if isinstance(node, ast.Constant):
+            return type(node.value).__name__
+        if isinstance(node, ast.List):
+            return "list"
+        if isinstance(node, ast.Dict):
+            return "dict"
+        if isinstance(node, ast.Set):
+            return "set"
+        if isinstance(node, ast.Tuple):
+            return "tuple"
+        return None
+
+    @staticmethod
+    def _find_method_calls(file: Path, target: str) -> dict[str, _CallInfo]:
+        try:
+            mo = ast.parse(file.read_text(), file.name)
+        except SyntaxError:
+            return {}
+
+        tracked: set[str] = set()
+        result: dict[str, _CallInfo] = {}
+
+        for node in ast.walk(mo):
+            if isinstance(node, ast.Assign):
+                if (
+                    isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Name)
+                    and node.value.func.id == target
+                    and isinstance(node.targets[0], ast.Name)
+                ):
+                    tracked.add(node.targets[0].id)
+
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                value = node.func.value
+                is_tracked = isinstance(value, ast.Name) and value.id in tracked
+                is_direct = (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Name)
+                    and value.func.id == target
+                )
+                if is_tracked or is_direct:
+                    method = node.func.attr
+                    if method not in result:
+                        result[method] = _CallInfo(
+                            positional_types=[
+                                PackageFinder._infer_arg_type(arg) for arg in node.args
+                            ],
+                            keyword_names=frozenset(
+                                kw.arg for kw in node.keywords if kw.arg is not None
+                            ),
+                        )
+
+        return result
+
+    @staticmethod
+    def _parse_method_signatures(file: Path, class_name: str) -> dict[str, _MethodSig]:
+        try:
+            tree = ast.parse(file.read_text())
+        except Exception:
+            return {}
+
+        classes: dict[str, ast.ClassDef] = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef)
+        }
+
+        def get_annotation(ann: ast.expr | None) -> str | None:
+            return ann.id if isinstance(ann, ast.Name) else None
+
+        def sig_from_func(func: ast.FunctionDef | ast.AsyncFunctionDef) -> _MethodSig:
+            positional = func.args.args[1:]  # exclude self
+            num_defaults = len(func.args.defaults)
+            return _MethodSig(
+                param_types=[get_annotation(p.annotation) for p in positional],
+                min_positional=len(positional) - num_defaults,
+                max_positional=None if func.args.vararg else len(positional),
+                all_param_names=frozenset(p.arg for p in positional)
+                | frozenset(p.arg for p in func.args.kwonlyargs),
+                has_var_keyword=func.args.kwarg is not None,
+            )
+
+        def extract(node: ast.ClassDef, seen: set[str]) -> dict[str, _MethodSig]:
+            sigs: dict[str, _MethodSig] = {}
+            for base in node.bases:
+                if isinstance(base, ast.Name) and base.id in classes and base.id not in seen:
+                    seen.add(base.id)
+                    sigs.update(extract(classes[base.id], seen))
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    sigs[item.name] = sig_from_func(item)
+            return sigs
+
+        if class_name not in classes:
+            return {}
+
+        return extract(classes[class_name], {class_name})
+
+    @staticmethod
+    def _call_signatures_match(
+        calls: dict[str, _CallInfo],
+        sigs: dict[str, _MethodSig],
+    ) -> bool:
+        for method, call in calls.items():
+            if method not in sigs:
+                continue
+            sig = sigs[method]
+            n = len(call.positional_types)
+            if n < sig.min_positional:
+                return False
+            if sig.max_positional is not None and n > sig.max_positional:
+                return False
+            if not sig.has_var_keyword and not call.keyword_names.issubset(sig.all_param_names):
+                return False
+            for i, call_type in enumerate(call.positional_types):
+                if call_type is None or i >= len(sig.param_types) or sig.param_types[i] is None:
+                    continue
+                if call_type != sig.param_types[i]:
+                    return False
+        return True
 
     @staticmethod
     def _parent_packages(module: str) -> list[str]:

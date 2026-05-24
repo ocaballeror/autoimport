@@ -388,6 +388,106 @@ def test_find_in_ours_copies_unknown_from_other(package: Path):
     assert result == "from requests import Session"
 
 
+def test_find_in_ours_matches_inherited_attributes(package: Path):
+    """
+    Given: A subclass inherits attributes from a base class defined in the same file.
+    When: Source uses those inherited attributes and _find_package_in_our_project is called.
+    Then: The candidate whose inherited attributes match is chosen.
+    """
+    file_a = package / "a.py"
+    file_a.write_text(
+        "class Base:\n def __init__(self):\n  self.host: str = ''\n  self.port: int = 0\n"
+        "class Config(Base):\n def __init__(self):\n  super().__init__()\n  self.timeout: int = 30\n"
+    )
+    file_b = package / "b.py"
+    file_b.write_text(
+        "class Config:\n def __init__(self):\n  self.name: str = ''\n  self.value: int = 0\n"
+    )
+
+    file_c = Path("c.py")
+    file_c.write_text("c = Config()\nc.host\nc.port\n")
+
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("Config", file_c)
+    assert result == "from package.a import Config"
+
+
+def test_find_in_ours_disambiguates_by_method_arg_type_via_assignment(package: Path):
+    """
+    Given: Two classes share a method name but differ in parameter types.
+    When: The source assigns T() to a variable then calls the method with a typed literal.
+    Then: The candidate whose parameter type matches the literal is chosen.
+    """
+    file_a = package / "a.py"
+    file_a.write_text("class T:\n def meth(self, a: str): pass\n")
+    file_b = package / "b.py"
+    file_b.write_text("class T:\n def meth(self, a: int): pass\n")
+
+    file_c = Path("c.py")
+    file_c.write_text("t = T()\nt.meth(1)\n")
+
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("T", file_c)
+    assert result == "from package.b import T"
+
+
+def test_find_in_ours_disambiguates_by_method_arg_type_direct_call(package: Path):
+    """
+    Given: Two classes share a method name but differ in parameter types.
+    When: The source calls the method directly on a T() expression (no assignment).
+    Then: The candidate whose parameter type matches the literal is chosen.
+    """
+    file_a = package / "a.py"
+    file_a.write_text("class T:\n def meth(self, a: str): pass\n")
+    file_b = package / "b.py"
+    file_b.write_text("class T:\n def meth(self, a: int): pass\n")
+
+    file_c = Path("c.py")
+    file_c.write_text("T().meth(1)\n")
+
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("T", file_c)
+    assert result == "from package.b import T"
+
+
+def test_find_in_ours_disambiguates_by_arg_count(package: Path):
+    """
+    Given: Two classes share a method name but differ in the number of parameters.
+    When: The source calls the method with a number of arguments that only one candidate accepts.
+    Then: The candidate with the matching arity is chosen.
+    """
+    file_a = package / "a.py"
+    file_a.write_text("class T:\n def meth(self, a, b): pass\n")
+    file_b = package / "b.py"
+    file_b.write_text("class T:\n def meth(self, a): pass\n")
+
+    file_c = Path("c.py")
+    file_c.write_text("T().meth(1, 2)\n")
+
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("T", file_c)
+    assert result == "from package.a import T"
+
+
+def test_find_in_ours_disambiguates_by_keyword_arg_name(package: Path):
+    """
+    Given: Two classes share a method name but use different parameter names.
+    When: The source calls the method with a keyword argument that only one candidate has.
+    Then: The candidate whose parameter name matches is chosen.
+    """
+    file_a = package / "a.py"
+    file_a.write_text("class T:\n def meth(self, a=None, b=None): pass\n")
+    file_b = package / "b.py"
+    file_b.write_text("class T:\n def meth(self, x=None, y=None): pass\n")
+
+    file_c = Path("c.py")
+    file_c.write_text("T().meth(b=1)\n")
+
+    sc = PackageFinder()
+    result = sc._find_package_in_our_project("T", file_c)
+    assert result == "from package.a import T"
+
+
 def test_parse_class_attributes_returns_empty_set_when_class_not_found(package: Path):
     """
     Given: A file that does not contain the requested class.
