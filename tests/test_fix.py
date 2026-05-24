@@ -1324,17 +1324,23 @@ def test_fix_files_skips_ruff_message_that_has_autofix(tmp_path):
     original = "x = undefined_name\n"
     f.write_text(original)
 
-    ruff_output = json.dumps([{
-        "code": "F821",
-        "message": "Undefined name `undefined_name`",
-        "filename": str(f),
-        "fix": {"message": "auto-fixable", "edits": []},
-        "location": {"row": 1, "column": 4},
-        "end_location": {"row": 1, "column": 18},
-    }])
+    ruff_output = json.dumps(
+        [
+            {
+                "code": "F821",
+                "message": "Undefined name `undefined_name`",
+                "filename": str(f),
+                "fix": {"message": "auto-fixable", "edits": []},
+                "location": {"row": 1, "column": 4},
+                "end_location": {"row": 1, "column": 18},
+            }
+        ]
+    )
 
-    with patch("autoimport.fix.subprocess.run") as mock_run, \
-            patch("autoimport.fix.subprocess.check_call"):
+    with (
+        patch("autoimport.fix.subprocess.run") as mock_run,
+        patch("autoimport.fix.subprocess.check_call"),
+    ):
         mock_run.return_value = MagicMock(stdout=ruff_output, returncode=1)
         fix_files([f])
 
@@ -1351,17 +1357,23 @@ def test_fix_files_skips_f821_when_message_has_no_quoted_name(tmp_path):
     original = "x = something\n"
     f.write_text(original)
 
-    ruff_output = json.dumps([{
-        "code": "F821",
-        "message": "Undefined name without backtick quotes",
-        "filename": str(f),
-        "fix": None,
-        "location": {"row": 1, "column": 4},
-        "end_location": {"row": 1, "column": 13},
-    }])
+    ruff_output = json.dumps(
+        [
+            {
+                "code": "F821",
+                "message": "Undefined name without backtick quotes",
+                "filename": str(f),
+                "fix": None,
+                "location": {"row": 1, "column": 4},
+                "end_location": {"row": 1, "column": 13},
+            }
+        ]
+    )
 
-    with patch("autoimport.fix.subprocess.run") as mock_run, \
-            patch("autoimport.fix.subprocess.check_call"):
+    with (
+        patch("autoimport.fix.subprocess.run") as mock_run,
+        patch("autoimport.fix.subprocess.check_call"),
+    ):
         mock_run.return_value = MagicMock(stdout=ruff_output, returncode=1)
         fix_files([f])
 

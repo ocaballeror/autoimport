@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+
 import click
 import xdg_base_dirs
 from maison import UserConfig

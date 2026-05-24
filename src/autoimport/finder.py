@@ -8,7 +8,7 @@ import statistics
 import sys
 import tomllib
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -16,7 +16,6 @@ from typing import Any
 from pyprojroot import here
 
 from autoimport.ast_utils import (
-    _CallInfo,
     analyze_usage,
     call_signatures_match,
     parse_class_attributes,
@@ -62,7 +61,8 @@ class PackageFinder:
                     self.import_cache[obj].update(set(zip(imports, def_files[obj])))
 
     def find_package(self, name: str, file: Path) -> str | None:
-        for check in [
+        check: Callable[[str], str | None]
+        for check in [  # type: ignore[assignment]
             self._find_package_in_common_statements,
             self._find_package_in_modules,
             self._find_package_in_libraries,
@@ -150,8 +150,7 @@ class PackageFinder:
         attr_filtered = [
             (line, def_file)
             for line, def_file in candidates
-            if not usage
-            or all(attr in parse_class_attributes(def_file, name) for attr in usage)
+            if not usage or all(attr in parse_class_attributes(def_file, name) for attr in usage)
         ]
 
         if not attr_filtered:

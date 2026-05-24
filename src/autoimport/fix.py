@@ -7,7 +7,12 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from autoimport.files import _restore_compound_fmt_skip, _stash_compound_fmt_skip, delete_lines, insert_imports
+from autoimport.files import (
+    _restore_compound_fmt_skip,
+    _stash_compound_fmt_skip,
+    delete_lines,
+    insert_imports,
+)
 from autoimport.finder import PackageFinder
 
 
