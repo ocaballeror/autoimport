@@ -1239,6 +1239,50 @@ def test_respect_new_lines_between_imports_and_code():
     assert result == source
 
 
+def test_fix_adds_import_for_type_annotation_bare():
+    """
+    Given: A variable annotation with an unimported type.
+    When: fix_code is run.
+    Then: The import is added.
+    """
+    source = "a: Iterable\n"
+    result = fix_code(source)
+    assert "from typing import Iterable" in result
+
+
+def test_fix_adds_import_for_type_annotation_generic():
+    """
+    Given: A variable annotation using a generic form of an unimported type.
+    When: fix_code is run.
+    Then: The import is added.
+    """
+    source = "a: Iterable[str]\n"
+    result = fix_code(source)
+    assert "from typing import Iterable" in result
+
+
+def test_fix_adds_import_for_function_parameter_annotation_bare():
+    """
+    Given: A function parameter annotation with an unimported type.
+    When: fix_code is run.
+    Then: The import is added.
+    """
+    source = "def foo(a: Iterable): ...\n"
+    result = fix_code(source)
+    assert "from typing import Iterable" in result
+
+
+def test_fix_adds_import_for_function_parameter_annotation_generic():
+    """
+    Given: A function parameter annotation using a generic form of an unimported type.
+    When: fix_code is run.
+    Then: The import is added.
+    """
+    source = "def foo(a: Iterable[str]): ...\n"
+    result = fix_code(source)
+    assert "from typing import Iterable" in result
+
+
 def test_fix_files_skips_file_that_needs_no_changes(tmp_path) -> None:
     """
     Given: A file whose source is already correct (no missing or unused imports).
