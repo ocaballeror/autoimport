@@ -1,11 +1,9 @@
 .DEFAULT_GOAL := test
-isort = pdm run isort --skip tests/assets src tests setup.py
-black = pdm run black --exclude assets --target-version py39 src tests
 
 .PHONY: install
 install:
-	pdm install --dev
-	pdm run pre-commit install
+	uv sync
+	uv run pre-commit install
 
 .PHONY: update
 update:
@@ -13,31 +11,8 @@ update:
 	@echo "- Updating dependencies -"
 	@echo "-------------------------"
 
-	pdm update --no-sync --update-eager
-	pdm sync --clean
-
-	@echo "\a"
-
-.PHONY: update-production
-update-production:
-	@echo "------------------------------------"
-	@echo "- Updating production dependencies -"
-	@echo "------------------------------------"
-
-	pdm update --production --no-sync --update-eager
-	pdm sync --clean
-
-	@echo "\a"
-
-.PHONY: outdated
-outdated:
-	@echo "-------------------------"
-	@echo "- Outdated dependencies -"
-	@echo "-------------------------"
-
-	pdm update --dry-run --unconstrained
-
-	@echo "\a"
+	uv sync
+	uvx uv-upx upgrade run
 
 .PHONY: format
 format:
@@ -45,8 +20,7 @@ format:
 	@echo "- Formating the code -"
 	@echo "----------------------"
 
-	$(isort)
-	$(black)
+	uv run ruff format
 
 	@echo ""
 
@@ -56,9 +30,7 @@ lint:
 	@echo "- Testing the lint -"
 	@echo "--------------------"
 
-	pdm run flakeheaven lint --exclude assets src/ tests/ setup.py
-	$(isort) --check-only --df
-	$(black) --check --diff
+	uv run ruff check
 
 	@echo ""
 
@@ -68,35 +40,17 @@ mypy:
 	@echo "- Testing mypy -"
 	@echo "----------------"
 
-	pdm run mypy src tests
+	uv run mypy src tests
 
 	@echo ""
 
 .PHONY: test
-test: test-code test-examples
-
-	@echo "\a"
-
-.PHONY: test-code
 test-code:
 	@echo "----------------"
 	@echo "- Testing code -"
 	@echo "----------------"
 
-	pdm run pytest --cov-report term-missing --cov src tests ${ARGS}
-
-	@echo ""
-
-.PHONY: test-examples
-test-examples:
-	@echo "--------------------"
-	@echo "- Testing examples -"
-	@echo "--------------------"
-
-	# @find docs/examples -type f -name '*.py' | xargs -I'{}' sh -c 'echo {}; pdm run python {} >/dev/null 2>&1 || (echo "{} failed" ; exit 1)'
-	@echo ""
-
-	# pdm run pytest docs/examples/*
+	uv run pytest tests ${ARGS}
 
 	@echo ""
 
@@ -121,6 +75,8 @@ clean:
 	rm -rf .cache
 	rm -rf .pytest_cache
 	rm -rf .mypy_cache
+	rm -rf .ruff_cache
+	rm -rf .autoimport_cache
 	rm -rf htmlcov
 	rm -f .coverage
 	rm -f .coverage.*
@@ -136,12 +92,12 @@ clean:
 	@echo ""
 
 .PHONY: docs
-docs: test-examples
+docs:
 	@echo "-------------------------"
 	@echo "- Serving documentation -"
 	@echo "-------------------------"
 
-	pdm run mkdocs serve
+	uv run mkdocs serve
 
 	@echo ""
 
@@ -168,7 +124,7 @@ build-package: clean
 	@echo "- Building the package -"
 	@echo "------------------------"
 
-	pdm build
+	uv build
 
 	@echo ""
 
@@ -178,7 +134,7 @@ build-docs:
 	@echo "- Building documentation -"
 	@echo "--------------------------"
 
-	pdm run mkdocs build --strict
+	uv run mkdocs build --strict
 
 	@echo ""
 
@@ -208,37 +164,11 @@ bump-version:
 	@echo "- Bumping program version -"
 	@echo "---------------------------"
 
-	cz bump --changelog --no-verify
-	git push --tags
-	git push
+	uv version --bump
 
 	@echo ""
 
 .PHONY: version
 version:
-	@python -c "import repository_pattern.version; print(repository_pattern.version.version_info())"
 
-.PHONY: security
-security:
-	@echo "--------------------"
-	@echo "- Testing security -"
-	@echo "--------------------"
-
-	# Ignoring 70612 (CVE-2019-8341). It is disputed and no fix is apparent, and
-	# the related dependencies are only used at dev time so do not present as
-	# great a risk to users of autoimport.
-	pdm run safety check --ignore 70612
-	@echo ""
-	pdm run bandit -r src
-
-	@echo ""
-
-.PHONY: release
-release:
-	@echo "----------------------"
-	@echo "- Generating Release -"
-	@echo "----------------------"
-
-	pdm run cz bump --changelog
-
-	@echo ""
+	uv version
