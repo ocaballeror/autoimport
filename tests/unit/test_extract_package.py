@@ -397,7 +397,7 @@ def test_find_in_ours_matches_inherited_attributes(package: Path):
     file_a = package / "a.py"
     file_a.write_text(
         "class Base:\n def __init__(self):\n  self.host: str = ''\n  self.port: int = 0\n"
-        "class Config(Base):\n def __init__(self):\n  super().__init__()\n  self.timeout: int = 30\n"
+        "class Config(Base):\n def __init__(self):\n  super().__init__()\n  self.timeout: int = 30"
     )
     file_b = package / "b.py"
     file_b.write_text(

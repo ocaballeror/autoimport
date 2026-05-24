@@ -37,7 +37,7 @@ def cli(
         package_name="autoimport", source_files=config_files, merge_configs=True
     ).values
 
-    services.fix_files(list(files), config)
+    services.fix_files(list(files), config)  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -9,6 +9,7 @@ import statistics
 import sys
 import tomllib
 from collections import defaultdict
+from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -75,10 +76,10 @@ class PackageFinder:
         self.cache_dir = Path(".autoimport_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         # { name: {("from . import name", "package/file.py")} }
-        self.import_cache: dict[str, set[tuple[str, str]]] = defaultdict(set)
+        self.import_cache: dict[str, set[tuple[str, Path]]] = defaultdict(set)
         self._pkg_cache: dict[str, tuple[dict[str, list[str]], dict[str, list[Path]]]] = {}
 
-    def index_packages(self, names: list[str]) -> None:
+    def index_packages(self, names: Iterable[str]) -> None:
         try:
             root = here()
         except RuntimeError:
@@ -275,8 +276,6 @@ class PackageFinder:
 
     def _iter_package_files(self, package_name: str) -> dict[str, tuple[Path, bool]]:
         parts = package_name.split(".")
-        base_path = None
-        path_entry_path: Path
         for path_entry in sys.path:
             candidate = Path(path_entry, *parts)
             if candidate.is_dir():
@@ -327,6 +326,8 @@ class PackageFinder:
             elif isinstance(node, ast.ImportFrom):
                 if node.level == 0:
                     source = node.module
+                    if not source:
+                        continue
                 else:
                     # Relative import: resolve against the current module's package.
                     # Init files represent the package itself, so level=1 means "this package";
