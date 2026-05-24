@@ -713,3 +713,104 @@ def test_read_project_dependencies_falls_back_when_metadata_raises(tmp_path):
     ):
         result = PackageFinder._read_project_dependencies(tmp_path)
     assert result == ["my_lib"]
+
+
+def test_index_packages_includes_stdlib_library_candidates():
+    """
+    Given: A name exported by a standard library in common_libraries.
+    When: index_packages is called.
+    Then: A candidate for that name appears in import_cache.
+    """
+    finder = PackageFinder()
+    finder.index_packages(["reduce"])
+    import_lines = {line for line, _ in finder.import_cache["reduce"]}
+    assert "from functools import reduce" in import_lines
+
+
+def test_index_packages_includes_stdlib_module_candidates():
+    """
+    Given: A name that is itself an importable stdlib module.
+    When: index_packages is called.
+    Then: An 'import {name}' candidate appears in import_cache.
+    """
+    finder = PackageFinder()
+    finder.index_packages(["os"])
+    import_lines = {line for line, _ in finder.import_cache["os"]}
+    assert "import os" in import_lines
+
+
+def test_find_package_resolves_stdlib_library_name_without_short_circuit(tmp_path):
+    """
+    Given: A name from a common stdlib library and no project package present.
+    When: find_package is called.
+    Then: The correct stdlib import is returned via the candidate path (not a short-circuit).
+    """
+    finder = PackageFinder()
+    usage_file = tmp_path / "usage.py"
+    usage_file.write_text("x = wraps\n")
+    result = finder.find_package("wraps", usage_file)
+    assert result == "from functools import wraps"
+
+
+def test_find_package_resolves_stdlib_module_import(tmp_path):
+    """
+    Given: A name that is an importable stdlib module.
+    When: find_package is called without a project present.
+    Then: 'import {name}' is returned.
+    """
+    finder = PackageFinder()
+    usage_file = tmp_path / "usage.py"
+    usage_file.write_text("os.getcwd()\n")
+    result = finder.find_package("os", usage_file)
+    assert result == "import os"
+
+
+def test_find_package_prefers_project_class_over_stdlib_when_attrs_match(package: Path):
+    """
+    Given: A project class and a same-named stdlib function exist as candidates.
+    When: The source uses instance attributes that only the project class has.
+    Then: The project class is chosen over the stdlib candidate.
+    """
+    (package / "things.py").write_text(
+        "class reduce:\n def my_method(self): pass\n def other_method(self): pass\n"
+    )
+    usage_file = package.parent / "usage.py"
+    usage_file.write_text("x = reduce()\nx.my_method()\n")
+
+    finder = PackageFinder()
+    result = finder.find_package("reduce", usage_file)
+    assert result == "from package.things import reduce"
+
+
+def test_find_package_prefers_stdlib_when_project_class_attrs_do_not_match(package: Path):
+    """
+    Given: A project class and a same-named stdlib name exist as candidates.
+    When: The source uses no attribute accesses that match the project class.
+    Then: The stdlib candidate is included in the result (mode selection, not dropped entirely).
+    """
+    (package / "things.py").write_text("class reduce:\n def project_only(self): pass\n")
+    usage_file = package.parent / "usage.py"
+    # No instance attribute access — analyze_usage returns empty usage
+    usage_file.write_text("result = reduce(range(10), lambda a, b: a + b)\n")
+
+    finder = PackageFinder()
+    result = finder.find_package("reduce", usage_file)
+    # Both are candidates with no discriminating info; result must be one of them
+    assert result in ("from functools import reduce", "from package.things import reduce")
+
+
+def test_find_package_stdlib_module_filtered_out_when_project_class_matches(package: Path):
+    """
+    Given: A project class shares its name with a stdlib module name.
+    When: Source code uses instance attributes from the project class.
+    Then: The 'import {name}' stdlib candidate is filtered out in favour of the project class.
+    """
+    (package / "json_wrapper.py").write_text(
+        "class json:\n def load_data(self): pass\n"
+    )
+    usage_file = package.parent / "usage.py"
+    usage_file.write_text("x = json()\nx.load_data()\n")
+
+    finder = PackageFinder()
+    result = finder.find_package("json", usage_file)
+    assert result == "from package.json_wrapper import json"

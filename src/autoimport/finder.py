@@ -49,6 +49,11 @@ _DIST_FALLBACK_MAP: dict[str, str] = {
     "protobuf": "google.protobuf",
 }
 
+# Sentinel path for stdlib modules compiled as C extensions (no .py source).
+# parse_class_attributes/parse_method_signatures catch all exceptions from file
+# reads, so a non-existent path safely yields empty results.
+_STDLIB_NO_SOURCE = Path("__autoimport_no_source_sentinel__")
+
 
 class PackageFinder:
     """Finds the correct import statement for a given object name."""
@@ -67,6 +72,27 @@ class PackageFinder:
         self._project_packages_cache: dict[Path | None, list[str]] = {}
 
     def index_packages(self, names: Iterable[str]) -> None:
+        names = list(names)
+
+        # Add one stdlib candidate per name from common_libraries (first match preserves
+        # the priority order defined there, e.g. typing before collections.abc).
+        for name in names:
+            for lib in common_libraries:
+                objects, def_files = self._extract_package_objects_with_files(lib)
+                if name in objects:
+                    self.import_cache[name].add((objects[name][0], def_files[name][0]))
+                    break
+
+        # Add stdlib module-level import candidates (import {name} style).
+        for name in names:
+            try:
+                spec = importlib.util.find_spec(name)
+            except (ImportError, ValueError):
+                spec = None
+            if spec is not None:
+                origin = Path(spec.origin) if spec.origin else _STDLIB_NO_SOURCE
+                self.import_cache[name].add((f"import {name}", origin))
+
         try:
             root = here()
         except RuntimeError:
@@ -84,14 +110,9 @@ class PackageFinder:
                     self.import_cache[obj].update(set(zip(imports, def_files[obj])))
 
     def find_package(self, name: str, file: Path) -> str | None:
-        for check in (
-            self._find_package_in_common_statements,
-            self._find_package_in_modules,
-            self._find_package_in_libraries,
-        ):
-            package = check(name)
-            if package is not None:
-                return package
+        package = self._find_package_in_common_statements(name)
+        if package is not None:
+            return package
         return self._find_package_in_our_project(name, file)
 
     def _find_project_packages(self, where: Path | None = None) -> list[str]:
@@ -197,14 +218,26 @@ class PackageFinder:
         if len(attr_filtered) == 1 or not method_calls:
             return statistics.mode([line for line, _ in attr_filtered])
 
-        sig_filtered = [
-            line
+        all_sigs = [
+            (line, def_file, parse_method_signatures(def_file, name))
             for line, def_file in attr_filtered
-            if call_signatures_match(method_calls, parse_method_signatures(def_file, name))
+        ]
+
+        sig_filtered = [
+            line for line, _, sigs in all_sigs
+            if call_signatures_match(method_calls, sigs)
         ]
 
         if sig_filtered:
-            return statistics.mode(sig_filtered)
+            # Prefer candidates that actually define the name as a class so that
+            # stdlib non-class entries (TypeVars, functions, etc.) that pass
+            # call_signatures_match by default (empty sigs → unknown → True) do
+            # not shadow project classes with verifiable signatures.
+            class_sig_filtered = [
+                line for line, _, sigs in all_sigs
+                if sigs and call_signatures_match(method_calls, sigs)
+            ]
+            return statistics.mode(class_sig_filtered if class_sig_filtered else sig_filtered)
 
         return statistics.mode([line for line, _ in attr_filtered])
 
