@@ -26,7 +26,13 @@ repos:
     hooks:
       - id: mypy
         name: mypy
-        entry: uv run dmypy --status-file .precommit-mypy run
+        entry: bash -c '
+          uv run dmypy --status-file .precommit-mypy run -- "$@";
+          ret=$?;
+          [ $ret -gt 1 ] || exit $ret;
+          uv run dmypy --status-file .precommit-mypy restart
+          uv run dmypy --status-file .precommit-mypy run -- "$@";
+          '
         args: [--, --scripts-are-modules, src]
         language: system
         pass_filenames: false
