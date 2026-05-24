@@ -59,7 +59,7 @@ def delete_lines(path: Path, line_numbers: set[int]) -> list[str]:
         with path.open("r", encoding="utf-8") as src:
             for idx, line in enumerate(src, start=1):
                 if idx in line_numbers:
-                    removed.append(line)
+                    removed.append(line.rstrip("\n"))
                 else:
                     tmp.write(line)
 
@@ -118,7 +118,8 @@ def _restore_compound_fmt_skip(files: list[Path], stashed: dict[Path, dict[int, 
                 m = _PLACEHOLDER_RE.match(line.rstrip("\n"))
                 if m:
                     idx = int(m.group(2))
-                    new_lines.append(path_stash[idx])
+                    original = path_stash.get(idx)
+                    new_lines.append(original if original is not None else line)
                 else:
                     new_lines.append(line)
             path.write_text("".join(new_lines))
