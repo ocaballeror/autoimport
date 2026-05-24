@@ -883,7 +883,7 @@ def test_fix_respects_leading_comments_with_new_lines():
         #!/usr/bin/env python3
         # -*- coding: latin-1 -*-
 
-        # pylint: disable=foobar
+        # type: ignore
 
         """
 
@@ -901,7 +901,7 @@ def test_fix_respects_leading_comments_with_new_lines():
         #!/usr/bin/env python3
         # -*- coding: latin-1 -*-
 
-        # pylint: disable=foobar
+        # type: ignore
 
         """
 
