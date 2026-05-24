@@ -1,4 +1,4 @@
-"""Tests the service layer."""
+"""Tests for fix_files and file manipulation helpers."""
 
 import json
 from pathlib import Path
@@ -8,8 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autoimport.model import common_statements
-from autoimport.services import _restore_compound_fmt_skip, fix_files
+from autoimport.constants import common_statements
+from autoimport.files import _restore_compound_fmt_skip
+from autoimport.fix import fix_files
 
 
 def fix_code(source: str, config: dict | None = None):
@@ -1332,8 +1333,8 @@ def test_fix_files_skips_ruff_message_that_has_autofix(tmp_path):
         "end_location": {"row": 1, "column": 18},
     }])
 
-    with patch("autoimport.services.subprocess.run") as mock_run, \
-            patch("autoimport.services.subprocess.check_call"):
+    with patch("autoimport.fix.subprocess.run") as mock_run, \
+            patch("autoimport.fix.subprocess.check_call"):
         mock_run.return_value = MagicMock(stdout=ruff_output, returncode=1)
         fix_files([f])
 
@@ -1359,8 +1360,8 @@ def test_fix_files_skips_f821_when_message_has_no_quoted_name(tmp_path):
         "end_location": {"row": 1, "column": 13},
     }])
 
-    with patch("autoimport.services.subprocess.run") as mock_run, \
-            patch("autoimport.services.subprocess.check_call"):
+    with patch("autoimport.fix.subprocess.run") as mock_run, \
+            patch("autoimport.fix.subprocess.check_call"):
         mock_run.return_value = MagicMock(stdout=ruff_output, returncode=1)
         fix_files([f])
 

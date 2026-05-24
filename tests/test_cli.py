@@ -1,4 +1,4 @@
-"""Test the command line interface."""
+"""Tests for the command line interface."""
 
 from pathlib import Path
 from textwrap import dedent

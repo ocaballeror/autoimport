@@ -6,7 +6,7 @@ import click
 import xdg_base_dirs
 from maison import UserConfig
 
-from autoimport import services
+from autoimport.fix import fix_files
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def cli(
         package_name="autoimport", source_files=config_files, merge_configs=True
     ).values
 
-    services.fix_files(list(files), config)
+    fix_files(list(files), config)
 
 
 if __name__ == "__main__":  # pragma: no cover
