@@ -75,6 +75,7 @@ class PackageFinder:
         self.cache_dir = Path(".autoimport_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.import_cache: dict[str, set[tuple[str, str]]] = defaultdict(set)
+        self._pkg_cache: dict[str, tuple[dict[str, list[str]], dict[str, list[Path]]]] = {}
 
     def index_packages(self, names: list[str]) -> None:
         try:
@@ -524,43 +525,47 @@ class PackageFinder:
     def _extract_package_objects_with_files(
         self, package_name: str
     ) -> tuple[dict[str, list[str]], dict[str, list[Path]]]:
+        if package_name in self._pkg_cache:
+            return self._pkg_cache[package_name]
+
+        result = self._load_package_objects(package_name)
+        self._pkg_cache[package_name] = result
+        return result
+
+    def _load_package_objects(
+        self, package_name: str
+    ) -> tuple[dict[str, list[str]], dict[str, list[Path]]]:
         cache_path = self.get_cache_path(package_name)
         all_files = self._iter_package_files(package_name)
 
         if not all_files:
             return {}, {}
 
-        cached_module_defs: dict[str, Any] = {}
+        current_fp = {mod: path.stat().st_mtime for mod, (path, _) in all_files.items()}
+
+        cached: dict[str, Any] = {}
         if cache_path.exists():
             try:
-                cached_module_defs = pickle.loads(cache_path.read_bytes())
+                cached = pickle.loads(cache_path.read_bytes())
             except Exception:
                 cache_path.unlink()
 
-        module_defs: dict[str, list[str]] = {}
-        module_reexports: dict[str, list[str]] = {}
-        new_module_defs: dict[str, Any] = {}
-        dirty = False
+        if cached.get("fingerprint") == current_fp and "objects" in cached:
+            return cached["objects"], cached["def_files"]
 
-        for mod_name, (file_path, is_init) in all_files.items():
-            mtime = file_path.stat().st_mtime
-            cached = cached_module_defs.get(mod_name, {})
-            if cached.get("mtime", 0) >= mtime:
-                module_defs[mod_name] = cached["names"]
-                module_reexports[mod_name] = cached.get("reexports", {})
+        cached_modules = cached.get("modules", {})
+        module_defs: dict[str, set[str]] = {}
+        module_reexports: dict[str, dict[str, str]] = {}
+
+        for mod_name, (file_path, _) in all_files.items():
+            entry = cached_modules.get(mod_name, {})
+            if entry.get("mtime", 0) >= current_fp[mod_name]:
+                module_defs[mod_name] = entry["names"]
+                module_reexports[mod_name] = entry.get("reexports", {})
             else:
-                module_defs[mod_name], module_reexports[mod_name] = list(
+                module_defs[mod_name], module_reexports[mod_name] = (
                     self._parse_module_definitions(file_path, mod_name)
                 )
-                dirty = True
-            new_module_defs[mod_name] = {
-                "mtime": mtime,
-                "names": module_defs[mod_name],
-                "reexports": module_reexports[mod_name],
-            }
-
-        if dirty:
-            cache_path.write_bytes(pickle.dumps(new_module_defs))
 
         objects: dict[str, list[str]] = {}
         definition_files: dict[str, list[Path]] = {}
@@ -576,5 +581,21 @@ class PackageFinder:
                         break
                 objects.setdefault(name, []).append(f"from {current} import {name}")
                 definition_files.setdefault(name, []).append(file_path)
+
+        cache_path.write_bytes(
+            pickle.dumps({
+                "fingerprint": current_fp,
+                "objects": objects,
+                "def_files": definition_files,
+                "modules": {
+                    mod_name: {
+                        "mtime": current_fp[mod_name],
+                        "names": module_defs[mod_name],
+                        "reexports": module_reexports[mod_name],
+                    }
+                    for mod_name in all_files
+                },
+            })
+        )
 
         return objects, definition_files

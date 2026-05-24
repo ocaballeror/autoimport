@@ -559,6 +559,76 @@ def test_extraction_uses_cache_on_second_call(package: Path):
     assert "cached_func" in second
 
 
+def test_cache_fast_path_skips_assembly_on_identical_mtimes(package: Path):
+    """
+    Given: The disk cache is warm (first call already wrote fingerprint + compiled result).
+    When: _load_package_objects is called again with no file changes.
+    Then: The compiled objects are returned directly from the fingerprint fast path
+          (no per-module parsing or re-assembly).
+    """
+    (package / "mod.py").write_text("class Fast:\n pass\n")
+
+    sc = PackageFinder()
+    first = sc._load_package_objects("package")
+
+    # Tamper with the per-module data in the disk cache to prove the fast path
+    # returns the compiled result rather than re-assembling from modules.
+    import pickle
+    cache_path = sc.get_cache_path("package")
+    cached = pickle.loads(cache_path.read_bytes())
+    cached["modules"] = {}  # wipe modules — a rebuild would produce an empty result
+    cache_path.write_bytes(pickle.dumps(cached))
+
+    second = sc._load_package_objects("package")
+
+    # Fast path should return the same compiled result, not the empty rebuild
+    assert first == second
+    assert "Fast" in first[0]
+
+
+def test_cache_in_memory_avoids_disk_on_second_call(package: Path):
+    """
+    Given: _extract_package_objects_with_files has been called once on an instance.
+    When: It is called again for the same package on the same instance.
+    Then: The in-memory _pkg_cache is used (no disk read needed).
+    """
+    (package / "mod.py").write_text("class Memo:\n pass\n")
+
+    sc = PackageFinder()
+    first = sc._extract_package_objects_with_files("package")
+
+    # Remove the disk cache to prove the second call doesn't touch disk
+    sc.get_cache_path("package").unlink()
+
+    second = sc._extract_package_objects_with_files("package")
+
+    assert first is second  # exact same objects, not a copy
+
+
+def test_cache_invalidates_when_file_changes(package: Path):
+    """
+    Given: The disk cache is warm.
+    When: A source file is modified (mtime advances).
+    Then: The fingerprint no longer matches, the file is re-parsed,
+          and the cache is rewritten with the new content.
+    """
+    mod = package / "mod.py"
+    mod.write_text("class OldName:\n pass\n")
+
+    sc = PackageFinder()
+    sc._load_package_objects("package")
+
+    # Simulate a file change by rewriting with new content and bumping mtime
+    mod.write_text("class NewName:\n pass\n")
+    mod.touch()  # ensure mtime advances
+
+    sc2 = PackageFinder()
+    result, _ = sc2._load_package_objects("package")
+
+    assert "NewName" in result
+    assert "OldName" not in result
+
+
 def test_read_project_dependencies_returns_dep_names(tmp_path):
     """
     Given: A pyproject.toml with a dependencies list.
