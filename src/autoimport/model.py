@@ -74,6 +74,7 @@ class PackageFinder:
         self.config = config if config else {}
         self.cache_dir = Path(".autoimport_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        # { name: {("from . import name", "package/file.py")} }
         self.import_cache: dict[str, set[tuple[str, str]]] = defaultdict(set)
         self._pkg_cache: dict[str, tuple[dict[str, list[str]], dict[str, list[Path]]]] = {}
 
@@ -204,8 +205,10 @@ class PackageFinder:
             return statistics.mode([line for line, _ in candidates])
 
         attr_filtered = [
-            (line, def_file) for line, def_file in candidates
-            if not usage or all(attr in self._parse_class_attributes(def_file, name) for attr in usage)
+            (line, def_file)
+            for line, def_file in candidates
+            if not usage
+            or all(attr in self._parse_class_attributes(def_file, name) for attr in usage)
         ]
 
         if not attr_filtered:
@@ -215,7 +218,8 @@ class PackageFinder:
             return statistics.mode([line for line, _ in attr_filtered])
 
         sig_filtered = [
-            line for line, def_file in attr_filtered
+            line
+            for line, def_file in attr_filtered
             if self._call_signatures_match(
                 method_calls, self._parse_method_signatures(def_file, name)
             )
@@ -271,14 +275,14 @@ class PackageFinder:
 
     def _iter_package_files(self, package_name: str) -> dict[str, tuple[Path, bool]]:
         parts = package_name.split(".")
+        base_path = None
+        path_entry_path: Path
         for path_entry in sys.path:
             candidate = Path(path_entry, *parts)
             if candidate.is_dir():
                 result: dict[str, tuple[Path, bool]] = {}
                 for py_file in candidate.rglob("*.py"):
-                    rel_parts = list(
-                        py_file.relative_to(Path(path_entry)).with_suffix("").parts
-                    )
+                    rel_parts = list(py_file.relative_to(Path(path_entry)).with_suffix("").parts)
                     is_init = rel_parts[-1] == "__init__"
                     if is_init:
                         mod_name = ".".join(rel_parts[:-1])
@@ -348,9 +352,7 @@ class PackageFinder:
             return set()
 
         classes: dict[str, ast.ClassDef] = {
-            node.name: node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ClassDef)
+            node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
         }
 
         def extract_attrs(node: ast.ClassDef, seen: set[str]) -> set[str]:
@@ -455,9 +457,7 @@ class PackageFinder:
             return {}
 
         classes: dict[str, ast.ClassDef] = {
-            node.name: node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ClassDef)
+            node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
         }
 
         def get_annotation(ann: ast.expr | None) -> str | None:
@@ -564,8 +564,8 @@ class PackageFinder:
                 module_defs[mod_name] = entry["names"]
                 module_reexports[mod_name] = entry.get("reexports", {})
             else:
-                module_defs[mod_name], module_reexports[mod_name] = (
-                    self._parse_module_definitions(file_path, mod_name)
+                module_defs[mod_name], module_reexports[mod_name] = self._parse_module_definitions(
+                    file_path, mod_name
                 )
 
         objects: dict[str, list[str]] = {}
@@ -604,19 +604,21 @@ class PackageFinder:
                 definition_files.setdefault(name, []).append(file_path)
 
         cache_path.write_bytes(
-            pickle.dumps({
-                "fingerprint": current_fp,
-                "objects": objects,
-                "def_files": definition_files,
-                "modules": {
-                    mod_name: {
-                        "mtime": current_fp[mod_name],
-                        "names": module_defs[mod_name],
-                        "reexports": module_reexports[mod_name],
-                    }
-                    for mod_name in all_files
-                },
-            })
+            pickle.dumps(
+                {
+                    "fingerprint": current_fp,
+                    "objects": objects,
+                    "def_files": definition_files,
+                    "modules": {
+                        mod_name: {
+                            "mtime": current_fp[mod_name],
+                            "names": module_defs[mod_name],
+                            "reexports": module_reexports[mod_name],
+                        }
+                        for mod_name in all_files
+                    },
+                }
+            )
         )
 
         return objects, definition_files
