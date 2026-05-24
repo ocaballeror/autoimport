@@ -7,64 +7,19 @@ install:
 
 .PHONY: update
 update:
-	@echo "-------------------------"
-	@echo "- Updating dependencies -"
-	@echo "-------------------------"
-
 	uv sync
 	uvx uv-upx upgrade run
 
-.PHONY: format
-format:
-	@echo "----------------------"
-	@echo "- Formating the code -"
-	@echo "----------------------"
-
-	uv run ruff format
-
-	@echo ""
-
 .PHONY: lint
 lint:
-	@echo "--------------------"
-	@echo "- Testing the lint -"
-	@echo "--------------------"
-
-	uv run ruff check
-
-	@echo ""
-
-.PHONY: mypy
-mypy:
-	@echo "----------------"
-	@echo "- Testing mypy -"
-	@echo "----------------"
-
-	uv run mypy src tests
-
-	@echo ""
+	uv run pre-commit --all
 
 .PHONY: test
 test-code:
-	@echo "----------------"
-	@echo "- Testing code -"
-	@echo "----------------"
-
-	uv run pytest tests ${ARGS}
-
-	@echo ""
-
-.PHONY: all
-all: lint mypy test security build-docs
-
-	@echo "\a"
+	uv run pytest ${ARGS}
 
 .PHONY: clean
 clean:
-	@echo "---------------------------"
-	@echo "- Cleaning unwanted files -"
-	@echo "---------------------------"
-
 	rm -rf `find . -name __pycache__`
 	rm -f `find . -type f -name '*.py[co]' `
 	rm -f `find . -type f -name '*.rej' `
@@ -89,8 +44,6 @@ clean:
 	rm -rf codecov.sh
 	rm -rf coverage.xml
 
-	@echo ""
-
 .PHONY: docs
 docs:
 	@echo "-------------------------"
@@ -98,33 +51,6 @@ docs:
 	@echo "-------------------------"
 
 	uv run mkdocs serve
-
-	@echo ""
-
-.PHONY: bump
-bump: pull-main bump-version build-package upload-pypi clean
-
-	@echo "\a"
-
-
-.PHONY: pull-main
-pull-main:
-	@echo "------------------------"
-	@echo "- Updating repository  -"
-	@echo "------------------------"
-
-	git checkout main
-	git pull
-
-	@echo ""
-
-.PHONY: build-package
-build-package: clean
-	@echo "------------------------"
-	@echo "- Building the package -"
-	@echo "------------------------"
-
-	uv build
 
 	@echo ""
 
@@ -137,38 +63,3 @@ build-docs:
 	uv run mkdocs build --strict
 
 	@echo ""
-
-.PHONY: upload-pypi
-upload-pypi:
-	@echo "-----------------------------"
-	@echo "- Uploading package to pypi -"
-	@echo "-----------------------------"
-
-	twine upload -r pypi dist/*
-
-	@echo ""
-
-.PHONY: upload-testing-pypi
-upload-testing-pypi:
-	@echo "-------------------------------------"
-	@echo "- Uploading package to pypi testing -"
-	@echo "-------------------------------------"
-
-	twine upload -r testpypi dist/*
-
-	@echo ""
-
-.PHONY: bump-version
-bump-version:
-	@echo "---------------------------"
-	@echo "- Bumping program version -"
-	@echo "---------------------------"
-
-	uv version --bump
-
-	@echo ""
-
-.PHONY: version
-version:
-
-	uv version
