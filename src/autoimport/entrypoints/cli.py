@@ -1,6 +1,5 @@
 """Command line interface definition."""
 
-import logging
 import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -11,8 +10,6 @@ import xdg_base_dirs
 from maison import UserConfig
 
 from autoimport.fix import fix_files
-
-log = logging.getLogger(__name__)
 
 
 def _load_config(config_file: str | None) -> dict[str, Any]:

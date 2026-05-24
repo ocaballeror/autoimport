@@ -8,7 +8,7 @@ import statistics
 import sys
 import tomllib
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -60,8 +60,6 @@ class PackageFinder:
         except RuntimeError:
             root = Path()
         self.cache_dir = root / ".autoimport_cache"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        # { name: {("from . import name", "package/file.py")} }
         self.import_cache: dict[str, set[tuple[str, Path]]] = defaultdict(set)
         self._pkg_cache: dict[str, tuple[dict[str, list[str]], dict[str, list[Path]]]] = {}
         self._common_stmt_cache: dict[str, str | None] = {}
@@ -86,16 +84,14 @@ class PackageFinder:
                     self.import_cache[obj].update(set(zip(imports, def_files[obj])))
 
     def find_package(self, name: str, file: Path) -> str | None:
-        check: Callable[[str], str | None]
-        for check in [  # type: ignore[assignment]
+        for check in (
             self._find_package_in_common_statements,
             self._find_package_in_modules,
             self._find_package_in_libraries,
-        ]:
+        ):
             package = check(name)
             if package is not None:
                 return package
-
         return self._find_package_in_our_project(name, file)
 
     def _find_project_packages(self, where: Path | None = None) -> list[str]:
@@ -116,10 +112,17 @@ class PackageFinder:
             self._project_packages_cache[where] = result
             return result
 
+        _NON_SOURCE_DIRS = {"tests", "test", "build", "dist", "vendor", "examples"}
         result = [
             path.name
             for path in resolved.iterdir()
-            if path.is_dir() and path.name != "tests" and (path / "__init__.py").exists()
+            if (
+                path.is_dir()
+                and path.name not in _NON_SOURCE_DIRS
+                and not path.name.startswith(".")
+                and not path.name.startswith("test")
+                and (path / "__init__.py").exists()
+            )
         ]
         self._project_packages_cache[where] = result
         return result
@@ -208,13 +211,12 @@ class PackageFinder:
     @staticmethod
     @cache
     def _find_package_in_modules(name: str) -> str | None:
-        package_specs = importlib.util.find_spec(name)
-
         try:
-            importlib.util.module_from_spec(package_specs)  # type: ignore
-        except AttributeError:
+            package_specs = importlib.util.find_spec(name)
+        except (ImportError, ValueError):
             return None
-
+        if package_specs is None:
+            return None
         return f"import {name}"
 
     def _find_package_in_libraries(self, name: str) -> str | None:
@@ -254,6 +256,8 @@ class PackageFinder:
         hash_name = hashlib.sha256(package_name.encode()).hexdigest()
         return self.cache_dir / f"{hash_name}.pkl"
 
+    _SKIP_SUBDIRS = {"__pycache__", "tests", "test", ".mypy_cache", ".ruff_cache"}
+
     def _iter_package_files(self, package_name: str) -> dict[str, tuple[Path, bool]]:
         parts = package_name.split(".")
         for path_entry in sys.path:
@@ -261,6 +265,12 @@ class PackageFinder:
             if candidate.is_dir():
                 result: dict[str, tuple[Path, bool]] = {}
                 for py_file in candidate.rglob("*.py"):
+                    rel = py_file.relative_to(candidate)
+                    if any(
+                        part in self._SKIP_SUBDIRS or part.startswith(".")
+                        for part in rel.parts[:-1]
+                    ):
+                        continue
                     rel_parts = list(py_file.relative_to(Path(path_entry)).with_suffix("").parts)
                     is_init = rel_parts[-1] == "__init__"
                     if is_init:
@@ -364,22 +374,28 @@ class PackageFinder:
                 objects.setdefault(name, []).append(f"from {mod_name} import {name}")
                 definition_files.setdefault(name, []).append(file_path)
 
-        cache_path.write_bytes(
-            pickle.dumps(
-                {
-                    "fingerprint": current_fp,
-                    "objects": objects,
-                    "def_files": definition_files,
-                    "modules": {
-                        mod_name: {
-                            "mtime": current_fp[mod_name],
-                            "names": module_defs[mod_name],
-                            "reexports": module_reexports[mod_name],
-                        }
-                        for mod_name in all_files
-                    },
-                }
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        tmp_cache = cache_path.with_suffix(".pkl.tmp")
+        try:
+            tmp_cache.write_bytes(
+                pickle.dumps(
+                    {
+                        "fingerprint": current_fp,
+                        "objects": objects,
+                        "def_files": definition_files,
+                        "modules": {
+                            mod_name: {
+                                "mtime": current_fp[mod_name],
+                                "names": module_defs[mod_name],
+                                "reexports": module_reexports[mod_name],
+                            }
+                            for mod_name in all_files
+                        },
+                    }
+                )
             )
-        )
+            tmp_cache.replace(cache_path)
+        except Exception:
+            tmp_cache.unlink(missing_ok=True)
 
         return objects, definition_files

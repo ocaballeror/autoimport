@@ -1,7 +1,7 @@
 """File manipulation helpers: insert, delete, and protect import lines."""
 
+import ast
 import re
-import shutil
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -14,18 +14,20 @@ def _find_header_end(lines: list[str]) -> int:
     while i < n and (lines[i].startswith("#") or not lines[i].strip()):
         i += 1
 
-    if i < n:
-        stripped = lines[i].strip()
-        if stripped.startswith('"""') or stripped.startswith("'''"):
-            quote = stripped[:3]
-            rest = stripped[3:]
-            if rest.endswith(quote) and len(rest) >= 3:
-                i += 1
-            else:
-                i += 1
-                while i < n and quote not in lines[i]:
-                    i += 1
-                i += 1
+    source = "".join(lines)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return i
+
+    if (
+        tree.body
+        and isinstance(tree.body[0], ast.Expr)
+        and isinstance(tree.body[0].value, ast.Constant)
+        and isinstance(tree.body[0].value.value, str)
+    ):
+        # end_lineno is 1-indexed; that value == the 0-indexed position of the next line
+        return tree.body[0].end_lineno  # type: ignore[return-value]
 
     return i
 
@@ -40,8 +42,10 @@ def insert_imports(file: Path, imports: list[str]) -> None:
     before = "".join(lines[:i])
     rest = "".join(lines[i:])
 
-    if before and not before.endswith("\n\n"):
-        import_block = "\n" + import_block
+    if before:
+        trailing_newlines = len(before) - len(before.rstrip("\n"))
+        if trailing_newlines < 2:
+            import_block = "\n" * (2 - trailing_newlines) + import_block
 
     source = before + import_block + rest
     file.write_text(source)
@@ -49,7 +53,7 @@ def insert_imports(file: Path, imports: list[str]) -> None:
 
 def delete_lines(path: Path, line_numbers: set[int]) -> list[str]:
     removed = []
-    with NamedTemporaryFile(mode="w", delete=False, encoding="utf-8") as tmp:
+    with NamedTemporaryFile(mode="w", delete=False, encoding="utf-8", dir=path.parent, suffix=".tmp") as tmp:
         with path.open("r", encoding="utf-8") as src:
             for idx, line in enumerate(src, start=1):
                 if idx in line_numbers:
@@ -57,15 +61,15 @@ def delete_lines(path: Path, line_numbers: set[int]) -> list[str]:
                 else:
                     tmp.write(line)
 
-    shutil.move(tmp.name, path)
+    Path(tmp.name).replace(path)
     return removed
 
 
 _COMPOUND_FMT_SKIP = re.compile(r"^(\s*)import\s+\w+\s*;.*#\s*fmt:\s*skip\s*$")
-_PLACEHOLDER_RE = re.compile(r"^(\s*)pass  # _autoimport_save_(\d+)\s*$")
+_PLACEHOLDER_RE = re.compile(r"^\s*pass  # _autoimport_save_(\d+)\s*$")
 
 
-def _stash_compound_fmt_skip(files: list[Path]) -> dict[Path, dict[int, str]]:
+def stash_compound_fmt_skip(files: list[Path]) -> dict[Path, dict[int, str]]:
     """Replace compound `import X; ...  # fmt: skip` lines with `pass` placeholders.
 
     ruff format splits compound statements even when marked # fmt: skip, which
@@ -96,7 +100,7 @@ def _stash_compound_fmt_skip(files: list[Path]) -> dict[Path, dict[int, str]]:
     return stashed
 
 
-def _restore_compound_fmt_skip(files: list[Path], stashed: dict[Path, dict[int, str]]) -> None:
+def restore_compound_fmt_skip(files: list[Path], stashed: dict[Path, dict[int, str]]) -> None:
     """Restore compound `import X; ...  # fmt: skip` lines from placeholders."""
     for path in files:
         if path not in stashed:
@@ -108,7 +112,7 @@ def _restore_compound_fmt_skip(files: list[Path], stashed: dict[Path, dict[int, 
             for line in lines:
                 m = _PLACEHOLDER_RE.match(line.rstrip("\n"))
                 if m:
-                    idx = int(m.group(2))
+                    idx = int(m.group(1))
                     original = path_stash.get(idx)
                     new_lines.append(original if original is not None else line)
                 else:

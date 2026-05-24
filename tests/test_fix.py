@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from autoimport.constants import common_statements
-from autoimport.files import _restore_compound_fmt_skip
+from autoimport.files import restore_compound_fmt_skip
 from autoimport.fix import fix_files
 
 
@@ -1309,7 +1309,7 @@ def test_restore_compound_fmt_skip_handles_oserror(tmp_path):
     stashed = {path: {0: "import foo  # fmt: skip\n"}}
     path.unlink()  # trigger OSError on read_text
 
-    _restore_compound_fmt_skip([path], stashed)  # must not raise
+    restore_compound_fmt_skip([path], stashed)  # must not raise
 
 
 def test_fix_files_skips_ruff_message_that_has_autofix(tmp_path):
