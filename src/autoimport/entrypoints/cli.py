@@ -5,17 +5,15 @@ from pathlib import Path
 from typing import IO, Any
 
 import click
-
 import xdg
 from maison import UserConfig
 
-from autoimport import services, version
+from autoimport import services
 
 log = logging.getLogger(__name__)
 
 
 @click.command()
-@click.version_option(version="", message=version.version_info())
 @click.option("--config-file", default=None)
 @click.argument("files", type=Path, nargs=-1)
 def cli(

@@ -1,6 +1,5 @@
 """Test the command line interface."""
 
-import re
 from pathlib import Path
 from textwrap import dedent
 
@@ -8,24 +7,12 @@ import pytest
 from click.testing import CliRunner
 
 from autoimport.entrypoints.cli import cli
-from autoimport.version import __version__
 
 
 @pytest.fixture(name="runner")
 def fixture_runner() -> CliRunner:
     """Configure the Click cli test runner."""
     return CliRunner(env={"XDG_CONFIG_HOME": "/dev/null"})
-
-
-def test_version(runner: CliRunner) -> None:
-    """Prints program version when called with --version."""
-    result = runner.invoke(cli, ["--version"])
-
-    assert result.exit_code == 0
-    assert re.search(
-        rf" *autoimport: {__version__}\n *Python: .*\n *Platform: .*",
-        result.stdout,
-    )
 
 
 def test_corrects_one_file(runner: CliRunner, tmp_path: Path) -> None:

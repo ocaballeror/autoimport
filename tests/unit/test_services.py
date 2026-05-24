@@ -652,7 +652,7 @@ def test_fix_autoimports_common_imports(import_key: str, import_statement: str):
     fixed_source_2 = dedent(
         f"""\
         import os
-        
+
         {import_statement}
 
         os.getcwd
