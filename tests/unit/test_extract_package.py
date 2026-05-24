@@ -721,3 +721,18 @@ def test_index_packages_includes_dependency_exports(package: Path):
     import_lines = {line for line, _ in sc.import_cache["DepClass"]}
     assert "from package.mod import DepClass" in import_lines
     assert "from depkg.api import DepClass" in import_lines
+
+
+def test_find_package_in_libraries_resolves_typing_names():
+    """
+    Given: Names from the typing module, including ones backed by a C extension.
+    When: _find_package_in_libraries is called.
+    Then: All names resolve to `from typing import X`, not to the C extension.
+    """
+    finder = PackageFinder()
+    # Names defined directly in typing.py
+    assert finder._find_package_in_libraries("Optional") == "from typing import Optional"
+    assert finder._find_package_in_libraries("Any") == "from typing import Any"
+    # Names re-exported from _typing (C extension) — the bug this test covers
+    assert finder._find_package_in_libraries("Union") == "from typing import Union"
+    assert finder._find_package_in_libraries("TypeVar") == "from typing import TypeVar"

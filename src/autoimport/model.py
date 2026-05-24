@@ -271,30 +271,29 @@ class PackageFinder:
 
     def _iter_package_files(self, package_name: str) -> dict[str, tuple[Path, bool]]:
         parts = package_name.split(".")
-        base_path = None
-        path_entry_path = None
         for path_entry in sys.path:
             candidate = Path(path_entry, *parts)
             if candidate.is_dir():
-                base_path = candidate
-                path_entry_path = Path(path_entry)
-                break
-        if base_path is None:
-            return {}
+                result: dict[str, tuple[Path, bool]] = {}
+                for py_file in candidate.rglob("*.py"):
+                    rel_parts = list(
+                        py_file.relative_to(Path(path_entry)).with_suffix("").parts
+                    )
+                    is_init = rel_parts[-1] == "__init__"
+                    if is_init:
+                        mod_name = ".".join(rel_parts[:-1])
+                    else:
+                        if rel_parts[-1].startswith("_"):
+                            continue
+                        mod_name = ".".join(rel_parts)
+                    result[mod_name] = (py_file, is_init)
+                return result
 
-        result: dict[str, tuple[Path, bool]] = {}
-        for py_file in base_path.rglob("*.py"):
-            rel_parts = list(py_file.relative_to(path_entry_path).with_suffix("").parts)
-            is_init = rel_parts[-1] == "__init__"
-            if is_init:
-                mod_name = ".".join(rel_parts[:-1])
-            else:
-                if rel_parts[-1].startswith("_"):
-                    continue
-                mod_name = ".".join(rel_parts)
-            result[mod_name] = (py_file, is_init)
+            single = candidate.with_suffix(".py")
+            if single.is_file():
+                return {package_name: (single, False)}
 
-        return result
+        return {}
 
     @staticmethod
     def _parse_module_definitions(file: Path, module: str) -> tuple[set[str], dict[str, str]]:
@@ -582,6 +581,26 @@ class PackageFinder:
                     else:
                         break
                 objects.setdefault(name, []).append(f"from {current} import {name}")
+                definition_files.setdefault(name, []).append(file_path)
+
+        # Also include names re-exported from C extensions (no .py file anywhere in sys.path).
+        # Example: typing.py does `from _typing import Union`, so Union should resolve to
+        # `from typing import Union` even though _typing itself is inaccessible as source.
+        for mod_name, reexports in module_reexports.items():
+            file_path = all_files[mod_name][0]
+            for name, source in reexports.items():
+                if source in all_files or name in objects:
+                    continue
+                # Skip if source has a .py file somewhere in sys.path — it's a regular
+                # module and the name should be imported from there directly.
+                source_parts = source.split(".")
+                if any(
+                    (Path(p, *source_parts).with_suffix(".py")).is_file()
+                    or (Path(p, *source_parts) / "__init__.py").is_file()
+                    for p in sys.path
+                ):
+                    continue
+                objects.setdefault(name, []).append(f"from {mod_name} import {name}")
                 definition_files.setdefault(name, []).append(file_path)
 
         cache_path.write_bytes(
