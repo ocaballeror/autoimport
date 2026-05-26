@@ -21,6 +21,14 @@ def fix_code(source: str, config: dict | None = None):
         return tmp_path.read_text()
 
 
+def fix_code_only(source: str, only_names: set[str], config: dict | None = None):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir) / "tmp.py"
+        tmp_path.write_text(source)
+        fix_files([tmp_path], config=config, only_names=only_names)
+        return tmp_path.read_text()
+
+
 def test_fix_code_adds_missing_import():
     """Understands that os is a package and add it to the top of the file."""
     source = "os.getcwd()"
@@ -1371,3 +1379,68 @@ def test_fix_files_skips_f821_when_message_has_no_quoted_name(tmp_path):
         fix_files([f])
 
     assert f.read_text() == original
+
+
+def test_only_names_adds_just_the_requested_import():
+    source = dedent(
+        """\
+        os.getcwd()
+        sys.exit()
+        """
+    )
+    expected = dedent(
+        """\
+        import os
+
+        os.getcwd()
+        sys.exit()
+        """
+    )
+
+    result = fix_code_only(source, {"os"})
+
+    assert result == expected
+
+
+def test_only_names_does_not_remove_unused_imports():
+    """In targeted mode we must not strip pre-existing unused imports (no F401)."""
+    source = dedent(
+        """\
+        import json
+
+        os.getcwd()
+        """
+    )
+
+    result = fix_code_only(source, {"os"})
+
+    assert "import json" in result
+    assert "import os" in result
+
+
+def test_only_names_skips_unrequested_missing_names():
+    source = dedent(
+        """\
+        os.getcwd()
+        sys.exit()
+        """
+    )
+
+    result = fix_code_only(source, {"os"})
+
+    assert "import os" in result
+    assert "import sys" not in result
+
+
+def test_only_names_skips_ruff_scan_subprocess(tmp_path):
+    """Targeted mode should not invoke the F821/F822 scan or the format passes."""
+    tmp_file = tmp_path / "tmp.py"
+    tmp_file.write_text("foo()\n")
+
+    with patch("autoimport.fix.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout="", returncode=0)
+        fix_files([tmp_file], only_names={"foo"})
+
+    invocations = [call.args[0] for call in mock_run.call_args_list]
+    assert not any("format" in cmd for cmd in invocations)
+    assert not any("E402,F821,F822" in cmd for cmd in invocations)

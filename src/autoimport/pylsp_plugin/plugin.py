@@ -20,7 +20,9 @@ COMMAND_FIX_IMPORTS = "autoimport.fixImports"
 
 # Diagnostic identifiers that signal a missing import.
 _MISSING_IMPORT_CODES = {"F821", "F822", "E0602"}
-_UNDEFINED_NAME_RE = re.compile(r"undefined name", re.IGNORECASE)
+_UNDEFINED_NAME_RE = re.compile(r"undefined name|undefined variable", re.IGNORECASE)
+# Matches the offending name when wrapped in backticks (ruff) or single quotes (pyflakes/pylint).
+_NAME_RE = re.compile(r"`([^`]+)`|'([^']+)'")
 
 
 def _is_missing_import_diagnostic(diagnostic: dict[str, Any]) -> bool:
@@ -29,6 +31,14 @@ def _is_missing_import_diagnostic(diagnostic: dict[str, Any]) -> bool:
         return True
     message = diagnostic.get("message") or ""
     return bool(_UNDEFINED_NAME_RE.search(message))
+
+
+def _extract_name(diagnostic: dict[str, Any]) -> str | None:
+    message = diagnostic.get("message") or ""
+    match = _NAME_RE.search(message)
+    if not match:
+        return None
+    return match.group(1) or match.group(2)
 
 
 def _load_config(workspace_root: str | None) -> dict[str, Any]:
@@ -66,20 +76,32 @@ def pylsp_code_actions(
     context: dict[str, Any],
 ) -> list[dict[str, Any]]:
     diagnostics = context.get("diagnostics") or []
-    if not any(_is_missing_import_diagnostic(d) for d in diagnostics):
-        return []
 
-    return [
-        {
-            "title": "autoimport: add missing imports",
-            "kind": "quickfix",
-            "command": {
-                "title": "autoimport: add missing imports",
-                "command": COMMAND_FIX_IMPORTS,
-                "arguments": [document.uri],
-            },
-        }
-    ]
+    seen: dict[str, dict[str, Any]] = {}
+    for diagnostic in diagnostics:
+        if not _is_missing_import_diagnostic(diagnostic):
+            continue
+        name = _extract_name(diagnostic)
+        if not name or name in seen:
+            continue
+        seen[name] = diagnostic
+
+    actions: list[dict[str, Any]] = []
+    for name, diagnostic in seen.items():
+        title = f"autoimport: add import for `{name}`"
+        actions.append(
+            {
+                "title": title,
+                "kind": "quickfix",
+                "diagnostics": [diagnostic],
+                "command": {
+                    "title": title,
+                    "command": COMMAND_FIX_IMPORTS,
+                    "arguments": [document.uri, name],
+                },
+            }
+        )
+    return actions
 
 
 @hookimpl
@@ -102,6 +124,9 @@ def pylsp_execute_command(
         return None
 
     document_uri = arguments[0]
+    name = arguments[1] if len(arguments) > 1 else None
+    only_names = {name} if name else None
+
     document = workspace.get_document(document_uri)
     source = document.source
     target_dir = Path(document.path).parent if document.path else Path(workspace.root_path)
@@ -115,7 +140,7 @@ def pylsp_execute_command(
         tmp.write(source)
         tmp.close()
 
-        fix_files([tmp_path], autoimport_cfg)
+        fix_files([tmp_path], autoimport_cfg, only_names=only_names)
         new_text = tmp_path.read_text(encoding="utf-8")
     finally:
         tmp_path.unlink(missing_ok=True)
