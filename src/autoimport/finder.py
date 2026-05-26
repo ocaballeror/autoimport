@@ -87,7 +87,7 @@ class PackageFinder:
         for name in names:
             try:
                 spec = importlib.util.find_spec(name)
-            except (ImportError, ValueError):
+            except ImportError, ValueError:
                 spec = None
             if spec is not None:
                 origin = Path(spec.origin) if spec.origin else _STDLIB_NO_SOURCE
@@ -224,8 +224,7 @@ class PackageFinder:
         ]
 
         sig_filtered = [
-            line for line, _, sigs in all_sigs
-            if call_signatures_match(method_calls, sigs)
+            line for line, _, sigs in all_sigs if call_signatures_match(method_calls, sigs)
         ]
 
         if sig_filtered:
@@ -234,7 +233,8 @@ class PackageFinder:
             # call_signatures_match by default (empty sigs → unknown → True) do
             # not shadow project classes with verifiable signatures.
             class_sig_filtered = [
-                line for line, _, sigs in all_sigs
+                line
+                for line, _, sigs in all_sigs
                 if sigs and call_signatures_match(method_calls, sigs)
             ]
             return statistics.mode(class_sig_filtered if class_sig_filtered else sig_filtered)
@@ -246,7 +246,7 @@ class PackageFinder:
     def _find_package_in_modules(name: str) -> str | None:
         try:
             package_specs = importlib.util.find_spec(name)
-        except (ImportError, ValueError):
+        except ImportError, ValueError:
             return None
         if package_specs is None:
             return None

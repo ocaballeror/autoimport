@@ -33,9 +33,7 @@ def _run_on_stdin(config: dict[str, Any]) -> None:
     source = sys.stdin.read()
     # The temp file is created in cwd so pyprojroot picks up the active project
     # rather than the system temp directory.
-    tmp = NamedTemporaryFile(
-        "w", suffix=".py", dir=".", delete=False, encoding="utf-8"
-    )
+    tmp = NamedTemporaryFile("w", suffix=".py", dir=".", delete=False, encoding="utf-8")
     try:
         tmp.write(source)
         tmp.close()

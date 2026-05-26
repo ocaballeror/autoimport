@@ -692,9 +692,7 @@ def test_read_project_dependencies_uses_fallback_map_for_known_dists(tmp_path):
     (tmp_path / "pyproject.toml").write_text(
         '[project]\ndependencies = ["pyyaml", "beautifulsoup4", "python-dateutil"]\n'
     )
-    with patch(
-        "autoimport.finder.importlib.metadata.packages_distributions", return_value={}
-    ):
+    with patch("autoimport.finder.importlib.metadata.packages_distributions", return_value={}):
         result = PackageFinder._read_project_dependencies(tmp_path)
     assert "yaml" in result
     assert "bs4" in result
@@ -805,9 +803,7 @@ def test_find_package_stdlib_module_filtered_out_when_project_class_matches(pack
     When: Source code uses instance attributes from the project class.
     Then: The 'import {name}' stdlib candidate is filtered out in favour of the project class.
     """
-    (package / "json_wrapper.py").write_text(
-        "class json:\n def load_data(self): pass\n"
-    )
+    (package / "json_wrapper.py").write_text("class json:\n def load_data(self): pass\n")
     usage_file = package.parent / "usage.py"
     usage_file.write_text("x = json()\nx.load_data()\n")
 

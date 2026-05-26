@@ -9,8 +9,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-log = logging.getLogger(__name__)
-
 from autoimport.files import (
     delete_lines,
     insert_imports,
@@ -18,6 +16,8 @@ from autoimport.files import (
     stash_compound_fmt_skip,
 )
 from autoimport.finder import PackageFinder
+
+log = logging.getLogger(__name__)
 
 
 def _expand_paths(paths: Sequence[Path]) -> list[Path]:
@@ -54,7 +54,9 @@ def fix_files(files: Sequence[Path], config: dict[str, Any] | None = None) -> No
             messages = json.loads(result.stdout)
         else:
             if result.returncode not in (0, 1):
-                log.debug("ruff check exited %d with no stdout: %s", result.returncode, result.stderr)
+                log.debug(
+                    "ruff check exited %d with no stdout: %s", result.returncode, result.stderr
+                )
             messages = []
 
         packages_missing: set[str] = set()

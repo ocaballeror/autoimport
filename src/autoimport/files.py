@@ -54,7 +54,9 @@ def insert_imports(file: Path, imports: list[str]) -> None:
 
 def delete_lines(path: Path, line_numbers: set[int]) -> list[str]:
     removed = []
-    with NamedTemporaryFile(mode="w", delete=False, encoding="utf-8", dir=path.parent, suffix=".tmp") as tmp:
+    with NamedTemporaryFile(
+        mode="w", delete=False, encoding="utf-8", dir=path.parent, suffix=".tmp"
+    ) as tmp:
         with path.open("r", encoding="utf-8") as src:
             for idx, line in enumerate(src, start=1):
                 if idx in line_numbers:

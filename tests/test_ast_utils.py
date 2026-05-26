@@ -1,9 +1,5 @@
 """Tests for AST parsing utilities in ast_utils.py."""
 
-from pathlib import Path
-
-import pytest
-
 from autoimport.ast_utils import (
     _CallInfo,
     _MethodSig,
