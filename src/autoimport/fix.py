@@ -33,25 +33,13 @@ def _expand_paths(paths: Sequence[Path]) -> list[Path]:
 def fix_files(
     files: Sequence[Path],
     config: dict[str, Any] | None = None,
-    only_names: set[str] | None = None,
 ) -> None:
-    """Fix imports in ``files``.
-
-    When ``only_names`` is provided, the function operates in targeted mode:
-    it skips ruff's scan, the E402 reshuffling and the trailing F401/format
-    passes, and only inserts imports for the supplied names. The rest of the
-    file is left untouched apart from an I001 sort that places the new import
-    in the right block.
-    """
+    """Fix imports in ``files``."""
     fnames = list(map(str, files))
     expanded = _expand_paths(files)
 
     stashed = stash_compound_fmt_skip(expanded)
     try:
-        if only_names is not None:
-            _fix_specific_names(expanded, config, only_names)
-            return
-
         subprocess.run(["ruff", "format", "--silent", *fnames], check=False)
         result = subprocess.run(
             [
@@ -146,29 +134,3 @@ def insert_chosen_import(file: Path, import_statement: str) -> None:
         )
     finally:
         restore_compound_fmt_skip([file], stashed)
-
-
-def _fix_specific_names(
-    expanded: list[Path],
-    config: dict[str, Any] | None,
-    only_names: set[str],
-) -> None:
-    finder = PackageFinder(config)
-    finder.index_packages(only_names)
-
-    touched: list[str] = []
-    for fname in expanded:
-        resolved: list[str] = []
-        for name in only_names:
-            import_stmt = finder.find_package(name, fname)
-            if import_stmt:
-                resolved.append(import_stmt)
-        if resolved:
-            insert_imports(fname, resolved)
-            touched.append(str(fname))
-
-    if touched:
-        subprocess.run(
-            ["ruff", "check", "--exit-zero", "--silent", "--select", "I001", "--fix", *touched],
-            check=False,
-        )

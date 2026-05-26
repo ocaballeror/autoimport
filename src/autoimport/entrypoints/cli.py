@@ -6,27 +6,9 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 import click
-import xdg_base_dirs
-from maison import UserConfig
 
+from autoimport.config import load_config
 from autoimport.fix import fix_files
-
-
-def _load_config(config_file: str | None) -> dict[str, Any]:
-    config_files: list[str] = []
-
-    global_config_path = xdg_base_dirs.xdg_config_home() / "autoimport" / "config.toml"
-    if global_config_path.is_file():
-        config_files.append(str(global_config_path))
-
-    config_files.append("pyproject.toml")
-
-    if config_file is not None:
-        config_files.append(config_file)
-
-    return UserConfig(
-        package_name="autoimport", source_files=config_files, merge_configs=True
-    ).values
 
 
 def _run_on_stdin(config: dict[str, Any]) -> None:
@@ -57,7 +39,7 @@ def cli(
     Pass ``-`` as the only file argument to read from stdin and write the
     corrected source to stdout.
     """
-    config = _load_config(config_file)
+    config = load_config(extra_config_file=config_file)
 
     if files == ("-",):
         _run_on_stdin(config)

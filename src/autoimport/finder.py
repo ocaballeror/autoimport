@@ -98,7 +98,7 @@ class PackageFinder:
         for name in names:
             try:
                 spec = importlib.util.find_spec(name)
-            except ImportError, ValueError:
+            except (ImportError, ValueError):
                 spec = None
             if spec is not None:
                 origin = Path(spec.origin) if spec.origin else _STDLIB_NO_SOURCE
@@ -133,11 +133,14 @@ class PackageFinder:
         applied: callers that want to ask the user to pick (e.g. the pylsp
         plugin) get the full list, while ``find_package`` keeps collapsing the
         candidates to a single line.
+
+        The result is sorted alphabetically so the order shown to the user
+        stays stable across sessions (the underlying cache is a set).
         """
         common = self._find_package_in_common_statements(name)
         if common is not None:
             return [common]
-        return _dedupe(self._project_candidate_lines(name, file))
+        return sorted(_dedupe(self._project_candidate_lines(name, file)))
 
     def _find_project_packages(self, where: Path | None = None) -> list[str]:
         if where in self._project_packages_cache:
@@ -282,7 +285,7 @@ class PackageFinder:
     def _find_package_in_modules(name: str) -> str | None:
         try:
             package_specs = importlib.util.find_spec(name)
-        except ImportError, ValueError:
+        except (ImportError, ValueError):
             return None
         if package_specs is None:
             return None

@@ -160,6 +160,14 @@ def test_pylsp_commands_exposes_command(config, workspace):
     assert plugin.COMMAND_FIX_IMPORTS in plugin.pylsp_commands(config, workspace)
 
 
+def _apply_edit(source: str, edit: dict) -> str:
+    """Replay an LSP TextEdit against ``source`` so tests can assert on the result."""
+    lines = source.splitlines(keepends=True)
+    start = edit["range"]["start"]["line"]
+    end = edit["range"]["end"]["line"]
+    return "".join(lines[:start]) + edit["newText"] + "".join(lines[end:])
+
+
 def test_execute_command_applies_chosen_import(config, workspace):
     source = "os.getcwd()\n"
     document = make_document(workspace, "a.py", source)
@@ -184,7 +192,28 @@ def test_execute_command_applies_chosen_import(config, workspace):
     method, payload = workspace._endpoint.request.call_args[0]
     assert method == "workspace/applyEdit"
     edits = payload["edit"]["changes"][document.uri]
-    assert edits[0]["newText"] == fixed
+    # The edit must be minimal (no whole-document replace) but produce the fixed source.
+    assert _apply_edit(source, edits[0]) == fixed
+    assert "os.getcwd()" not in edits[0]["newText"]
+
+
+def test_minimal_edit_only_touches_changed_lines():
+    """A pure insertion produces a zero-length range edit at the insertion point."""
+    old = "def foo():\n    pass\n"
+    new = "import os\n\ndef foo():\n    pass\n"
+
+    edit = plugin._minimal_text_edit(old, new)
+
+    assert edit["range"]["start"] == {"line": 0, "character": 0}
+    assert edit["range"]["end"] == {"line": 0, "character": 0}
+    assert edit["newText"] == "import os\n\n"
+
+
+def test_minimal_edit_handles_no_change():
+    """Identical strings produce an empty edit at (0, 0)."""
+    edit = plugin._minimal_text_edit("x = 1\n", "x = 1\n")
+
+    assert edit["newText"] == ""
 
 
 def test_execute_command_without_import_statement_is_noop(config, workspace):

@@ -6,6 +6,18 @@ from pylsp import uris
 from pylsp.config.config import Config
 from pylsp.workspace import Document, Workspace
 
+from autoimport.pylsp_plugin import plugin
+
+
+@pytest.fixture(autouse=True)
+def _reset_plugin_caches():
+    """Module-level caches must not leak between tests."""
+    plugin._finder_cache.clear()
+    plugin._config_cache.clear()
+    yield
+    plugin._finder_cache.clear()
+    plugin._config_cache.clear()
+
 
 @pytest.fixture
 def workspace(tmp_path):
