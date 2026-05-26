@@ -12,11 +12,12 @@ from pylsp import hookimpl
 
 from autoimport.config import load_config
 from autoimport.finder import PackageFinder
-from autoimport.fix import insert_chosen_import_text
+from autoimport.fix import fix_files, insert_chosen_import_text
 
 logger = logging.getLogger(__name__)
 
 COMMAND_FIX_IMPORTS = "autoimport.fixImports"
+COMMAND_FIX_ALL_IMPORTS = "autoimport.fixAllImports"
 
 # Diagnostic identifiers that signal a missing import. F822 (undefined name in
 # __all__) is intentionally excluded — adding an import does not satisfy it.
@@ -145,8 +146,18 @@ def pylsp_code_actions(
             continue
         seen[name] = diagnostic
 
+    fix_all_action: dict[str, Any] = {
+        "title": "autoimport: fix all imports in file",
+        "kind": "source.fixAll",
+        "command": {
+            "title": "autoimport: fix all imports in file",
+            "command": COMMAND_FIX_ALL_IMPORTS,
+            "arguments": [document.uri],
+        },
+    }
+
     if not seen:
-        return []
+        return [fix_all_action]
 
     finder = _get_finder(workspace.root_path)
     finder.index_packages(seen.keys())
@@ -179,6 +190,7 @@ def pylsp_code_actions(
                         },
                     }
                 )
+        actions.append(fix_all_action)
         return actions
     finally:
         buffer_path.unlink(missing_ok=True)
@@ -186,7 +198,22 @@ def pylsp_code_actions(
 
 @hookimpl
 def pylsp_commands(config: Any, workspace: Any) -> list[str]:
-    return [COMMAND_FIX_IMPORTS]
+    return [COMMAND_FIX_IMPORTS, COMMAND_FIX_ALL_IMPORTS]
+
+
+def _fix_all_in_text(source: str, workspace_root: str | None) -> str:
+    """Run the full :func:`fix_files` pipeline on an in-memory buffer.
+
+    ``fix_files`` operates on real paths, so we materialise the buffer in a
+    temp file, run the pipeline against it, and read the result back. The temp
+    file lives outside the workspace so project tooling doesn't see it.
+    """
+    tmp = _write_buffer_to_temp(source)
+    try:
+        fix_files([tmp], _get_config(workspace_root))
+        return tmp.read_text(encoding="utf-8")
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 @hookimpl
@@ -196,6 +223,31 @@ def pylsp_execute_command(
     command: str,
     arguments: list[Any],
 ) -> None:
+    if command == COMMAND_FIX_ALL_IMPORTS:
+        if not arguments:
+            logger.warning("autoimport: %s requires (uri,)", command)
+            return None
+        document_uri = arguments[0]
+        document = workspace.get_document(document_uri)
+        source = document.source
+        new_text = _fix_all_in_text(source, workspace.root_path)
+        if new_text == source:
+            return None
+        workspace.apply_edit(
+            {
+                "documentChanges": [
+                    {
+                        "textDocument": {
+                            "uri": document_uri,
+                            "version": getattr(document, "version", None),
+                        },
+                        "edits": [_minimal_text_edit(source, new_text)],
+                    }
+                ]
+            }
+        )
+        return None
+
     if command != COMMAND_FIX_IMPORTS:
         return None
 

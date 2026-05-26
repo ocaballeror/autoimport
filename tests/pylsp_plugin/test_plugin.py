@@ -33,7 +33,18 @@ def _patch_index():
     return patch.object(plugin.PackageFinder, "index_packages", autospec=False)
 
 
-def test_no_diagnostics_means_no_action(config, workspace):
+def _quickfix_actions(actions: list[dict]) -> list[dict]:
+    return [a for a in actions if a.get("kind") == "quickfix"]
+
+
+def _fix_all_action(actions: list[dict]) -> dict | None:
+    for action in actions:
+        if action["command"]["command"] == plugin.COMMAND_FIX_ALL_IMPORTS:
+            return action
+    return None
+
+
+def test_no_diagnostics_yields_only_fix_all(config, workspace):
     document = make_document(workspace, "a.py", "x = 1\n")
 
     actions = plugin.pylsp_code_actions(
@@ -44,10 +55,13 @@ def test_no_diagnostics_means_no_action(config, workspace):
         context={"diagnostics": []},
     )
 
-    assert actions == []
+    assert _quickfix_actions(actions) == []
+    fix_all = _fix_all_action(actions)
+    assert fix_all is not None
+    assert fix_all["command"]["arguments"] == [document.uri]
 
 
-def test_unrelated_diagnostic_means_no_action(config, workspace):
+def test_unrelated_diagnostic_yields_only_fix_all(config, workspace):
     document = make_document(workspace, "a.py", "x = 1\n")
     context = {
         "diagnostics": [{"source": "pycodestyle", "code": "E501", "message": "line too long"}]
@@ -61,7 +75,8 @@ def test_unrelated_diagnostic_means_no_action(config, workspace):
         context=context,
     )
 
-    assert actions == []
+    assert _quickfix_actions(actions) == []
+    assert _fix_all_action(actions) is not None
 
 
 def test_single_candidate_produces_one_action(config, workspace):
@@ -77,8 +92,9 @@ def test_single_candidate_produces_one_action(config, workspace):
             context={"diagnostics": [diagnostic]},
         )
 
-    assert len(actions) == 1
-    action = actions[0]
+    quickfixes = _quickfix_actions(actions)
+    assert len(quickfixes) == 1
+    action = quickfixes[0]
     assert action["kind"] == "quickfix"
     assert "import os" in action["title"]
     assert action["diagnostics"] == [diagnostic]
@@ -101,15 +117,16 @@ def test_multiple_candidates_produce_one_action_per_candidate(config, workspace)
             context={"diagnostics": [diagnostic]},
         )
 
-    assert len(actions) == 2
-    titles = [action["title"] for action in actions]
+    quickfixes = _quickfix_actions(actions)
+    assert len(quickfixes) == 2
+    titles = [action["title"] for action in quickfixes]
     assert all(any(c in t for c in candidates) for t in titles)
 
-    inserts = [action["command"]["arguments"][1] for action in actions]
+    inserts = [action["command"]["arguments"][1] for action in quickfixes]
     assert sorted(inserts) == sorted(candidates)
 
     # All actions for the same diagnostic should attach it for editor grouping.
-    for action in actions:
+    for action in quickfixes:
         assert action["diagnostics"] == [diagnostic]
 
 
@@ -126,7 +143,8 @@ def test_no_candidates_means_no_action(config, workspace):
             context={"diagnostics": [diagnostic]},
         )
 
-    assert actions == []
+    assert _quickfix_actions(actions) == []
+    assert _fix_all_action(actions) is not None
 
 
 def test_per_name_grouping_with_mixed_candidate_counts(config, workspace):
@@ -151,12 +169,56 @@ def test_per_name_grouping_with_mixed_candidate_counts(config, workspace):
             context={"diagnostics": diagnostics},
         )
 
-    inserts = sorted(action["command"]["arguments"][1] for action in actions)
+    inserts = sorted(action["command"]["arguments"][1] for action in _quickfix_actions(actions))
     assert inserts == sorted(["import os", "from a.b import Book", "from c.d import Book"])
 
 
 def test_pylsp_commands_exposes_command(config, workspace):
-    assert plugin.COMMAND_FIX_IMPORTS in plugin.pylsp_commands(config, workspace)
+    commands = plugin.pylsp_commands(config, workspace)
+    assert plugin.COMMAND_FIX_IMPORTS in commands
+    assert plugin.COMMAND_FIX_ALL_IMPORTS in commands
+
+
+def test_fix_all_command_applies_edit(config, workspace):
+    source = "os.getcwd()\n"
+    new_source = "import os\n\nos.getcwd()\n"
+    document = make_document(workspace, "a.py", source)
+    document.version = 3
+
+    applied: list[dict] = []
+    workspace.apply_edit = applied.append
+
+    with patch.object(plugin, "_fix_all_in_text", return_value=new_source) as fix_all:
+        plugin.pylsp_execute_command(
+            config=config,
+            workspace=workspace,
+            command=plugin.COMMAND_FIX_ALL_IMPORTS,
+            arguments=[document.uri],
+        )
+
+    fix_all.assert_called_once_with(source, workspace.root_path)
+    assert len(applied) == 1
+    change = applied[0]["documentChanges"][0]
+    assert change["textDocument"] == {"uri": document.uri, "version": 3}
+    assert _apply_edit(source, change["edits"][0]) == new_source
+
+
+def test_fix_all_command_skips_apply_when_no_change(config, workspace):
+    source = "x = 1\n"
+    document = make_document(workspace, "a.py", source)
+
+    applied: list[dict] = []
+    workspace.apply_edit = applied.append
+
+    with patch.object(plugin, "_fix_all_in_text", return_value=source):
+        plugin.pylsp_execute_command(
+            config=config,
+            workspace=workspace,
+            command=plugin.COMMAND_FIX_ALL_IMPORTS,
+            arguments=[document.uri],
+        )
+
+    assert applied == []
 
 
 def _apply_edit(source: str, edit: dict) -> str:
