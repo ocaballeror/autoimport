@@ -810,3 +810,76 @@ def test_find_package_stdlib_module_filtered_out_when_project_class_matches(pack
     finder = PackageFinder()
     result = finder.find_package("json", usage_file)
     assert result == "from package.json_wrapper import json"
+
+
+def test_find_candidates_returns_common_statement_as_single_item():
+    """A name with a hardcoded common_statements entry should yield exactly one candidate."""
+    finder = PackageFinder()
+    # `wraps` is exposed via stdlib common libraries; the common_statements
+    # short-circuit path returns one definitive answer.
+    result = finder.find_candidates("wraps", Path("/dev/null"))
+
+    assert result == ["from functools import wraps"]
+
+
+def test_find_candidates_returns_all_options_for_ambiguous_name(package: Path):
+    """When multiple project modules define the same class, all are returned."""
+    (package / "first.py").write_text("class Book:\n pass\n")
+    (package / "second.py").write_text("class Book:\n pass\n")
+
+    usage_file = package.parent / "usage.py"
+    usage_file.write_text("Book()\n")
+
+    finder = PackageFinder()
+    result = finder.find_candidates("Book", usage_file)
+
+    assert sorted(result) == sorted(
+        ["from package.first import Book", "from package.second import Book"]
+    )
+
+
+def test_find_candidates_deduplicates_repeated_lines(package: Path):
+    """Identical import statements coming from different source paths collapse to one entry."""
+    (package / "first.py").write_text("class Book:\n pass\n")
+    (package / "second.py").write_text("class Book:\n pass\n")
+
+    finder = PackageFinder()
+    # Stuff the cache with duplicate (line, file) tuples mapping to the same line.
+    finder.import_cache["Book"] = {
+        ("from package.first import Book", package / "first.py"),
+        ("from package.first import Book", package / "alt.py"),
+        ("from package.second import Book", package / "second.py"),
+    }
+
+    usage_file = package.parent / "usage.py"
+    usage_file.write_text("Book()\n")
+    result = finder.find_candidates("Book", usage_file)
+
+    assert sorted(result) == sorted(
+        ["from package.first import Book", "from package.second import Book"]
+    )
+
+
+def test_find_candidates_returns_empty_when_unknown(tmp_path):
+    finder = PackageFinder()
+    usage_file = tmp_path / "usage.py"
+    usage_file.write_text("foo()\n")
+
+    assert finder.find_candidates("foo", usage_file) == []
+
+
+def test_find_package_still_applies_mode_tiebreaker_on_cli_path(package: Path):
+    """find_package keeps using statistics.mode so the CLI behaviour is unchanged."""
+    (package / "first.py").write_text("class Book:\n pass\n")
+    (package / "second.py").write_text("class Book:\n pass\n")
+
+    usage_file = package.parent / "usage.py"
+    usage_file.write_text("Book()\n")
+
+    finder = PackageFinder()
+    chosen = finder.find_package("Book", usage_file)
+
+    assert chosen in (
+        "from package.first import Book",
+        "from package.second import Book",
+    )

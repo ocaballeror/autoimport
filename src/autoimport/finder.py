@@ -55,6 +55,17 @@ _DIST_FALLBACK_MAP: dict[str, str] = {
 _STDLIB_NO_SOURCE = Path("__autoimport_no_source_sentinel__")
 
 
+def _dedupe(items: Iterable[str]) -> list[str]:
+    """Return ``items`` with duplicates removed, preserving order."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
 class PackageFinder:
     """Finds the correct import statement for a given object name."""
 
@@ -114,6 +125,19 @@ class PackageFinder:
         if package is not None:
             return package
         return self._find_package_in_our_project(name, file)
+
+    def find_candidates(self, name: str, file: Path) -> list[str]:
+        """Return every distinct import statement that could resolve ``name``.
+
+        Unlike :meth:`find_package`, the ``statistics.mode`` tiebreaker is not
+        applied: callers that want to ask the user to pick (e.g. the pylsp
+        plugin) get the full list, while ``find_package`` keeps collapsing the
+        candidates to a single line.
+        """
+        common = self._find_package_in_common_statements(name)
+        if common is not None:
+            return [common]
+        return _dedupe(self._project_candidate_lines(name, file))
 
     def _find_project_packages(self, where: Path | None = None) -> list[str]:
         if where in self._project_packages_cache:
@@ -192,19 +216,31 @@ class PackageFinder:
         return result
 
     def _find_package_in_our_project(self, name: str, file: Path) -> str | None:
+        lines = self._project_candidate_lines(name, file)
+        if not lines:
+            return None
+        return statistics.mode(lines)
+
+    def _project_candidate_lines(self, name: str, file: Path) -> list[str]:
+        """Return candidate import statements (with duplicates preserved).
+
+        Duplicates are intentional — :meth:`_find_package_in_our_project` feeds
+        the result into ``statistics.mode``, which relies on frequency. Callers
+        that don't want the tiebreaker should dedupe themselves.
+        """
         if name not in self.import_cache:
             self.index_packages([name])
 
         candidates = self.import_cache[name]
         if not candidates:
-            return None
-        elif len(candidates) == 1:
-            return list(candidates)[0][0]
+            return []
+        if len(candidates) == 1:
+            return [next(iter(candidates))[0]]
 
         usage, method_calls = analyze_usage(file, name)
 
         if not usage and not method_calls:
-            return statistics.mode([line for line, _ in candidates])
+            return [line for line, _ in candidates]
 
         attr_filtered = [
             (line, def_file)
@@ -213,10 +249,10 @@ class PackageFinder:
         ]
 
         if not attr_filtered:
-            return statistics.mode([line for line, _ in candidates])
+            return [line for line, _ in candidates]
 
         if len(attr_filtered) == 1 or not method_calls:
-            return statistics.mode([line for line, _ in attr_filtered])
+            return [line for line, _ in attr_filtered]
 
         all_sigs = [
             (line, def_file, parse_method_signatures(def_file, name))
@@ -237,9 +273,9 @@ class PackageFinder:
                 for line, _, sigs in all_sigs
                 if sigs and call_signatures_match(method_calls, sigs)
             ]
-            return statistics.mode(class_sig_filtered if class_sig_filtered else sig_filtered)
+            return class_sig_filtered if class_sig_filtered else sig_filtered
 
-        return statistics.mode([line for line, _ in attr_filtered])
+        return [line for line, _ in attr_filtered]
 
     @staticmethod
     @cache

@@ -12,7 +12,8 @@ import xdg_base_dirs
 from maison import UserConfig
 from pylsp import hookimpl
 
-from autoimport.fix import fix_files
+from autoimport.finder import PackageFinder
+from autoimport.fix import insert_chosen_import
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,10 @@ def _load_config(workspace_root: str | None) -> dict[str, Any]:
     ).values
 
 
+def _make_finder(workspace_root: str | None) -> PackageFinder:
+    return PackageFinder(_load_config(workspace_root))
+
+
 @hookimpl
 def pylsp_settings() -> dict[str, Any]:
     logger.info("Initializing autoimport pylsp plugin")
@@ -86,21 +91,37 @@ def pylsp_code_actions(
             continue
         seen[name] = diagnostic
 
+    if not seen:
+        return []
+
+    finder = _make_finder(workspace.root_path)
+    finder.index_packages(seen.keys())
+
+    file_path = Path(document.path) if document.path else None
+
     actions: list[dict[str, Any]] = []
     for name, diagnostic in seen.items():
-        title = f"autoimport: add import for `{name}`"
-        actions.append(
-            {
-                "title": title,
-                "kind": "quickfix",
-                "diagnostics": [diagnostic],
-                "command": {
+        candidates = finder.find_candidates(name, file_path) if file_path else []
+        if not candidates:
+            continue
+        for candidate in candidates:
+            title = (
+                f"autoimport: `{candidate}`"
+                if len(candidates) > 1
+                else f"autoimport: add `{candidate}`"
+            )
+            actions.append(
+                {
                     "title": title,
-                    "command": COMMAND_FIX_IMPORTS,
-                    "arguments": [document.uri, name],
-                },
-            }
-        )
+                    "kind": "quickfix",
+                    "diagnostics": [diagnostic],
+                    "command": {
+                        "title": title,
+                        "command": COMMAND_FIX_IMPORTS,
+                        "arguments": [document.uri, candidate],
+                    },
+                }
+            )
     return actions
 
 
@@ -119,19 +140,15 @@ def pylsp_execute_command(
     if command != COMMAND_FIX_IMPORTS:
         return None
 
-    if not arguments:
-        logger.warning("autoimport: %s called without arguments", command)
+    if len(arguments) < 2:
+        logger.warning("autoimport: %s requires (uri, import_statement)", command)
         return None
 
-    document_uri = arguments[0]
-    name = arguments[1] if len(arguments) > 1 else None
-    only_names = {name} if name else None
+    document_uri, import_statement = arguments[0], arguments[1]
 
     document = workspace.get_document(document_uri)
     source = document.source
     target_dir = Path(document.path).parent if document.path else Path(workspace.root_path)
-
-    autoimport_cfg = _load_config(workspace.root_path)
 
     # Write source to a sibling temp file so pyprojroot/finder resolve the right project.
     tmp = NamedTemporaryFile("w", suffix=".py", dir=str(target_dir), delete=False, encoding="utf-8")
@@ -140,7 +157,7 @@ def pylsp_execute_command(
         tmp.write(source)
         tmp.close()
 
-        fix_files([tmp_path], autoimport_cfg, only_names=only_names)
+        insert_chosen_import(tmp_path, import_statement)
         new_text = tmp_path.read_text(encoding="utf-8")
     finally:
         tmp_path.unlink(missing_ok=True)

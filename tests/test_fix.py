@@ -10,7 +10,7 @@ import pytest
 
 from autoimport.constants import common_statements
 from autoimport.files import restore_compound_fmt_skip
-from autoimport.fix import fix_files
+from autoimport.fix import fix_files, insert_chosen_import
 
 
 def fix_code(source: str, config: dict | None = None):
@@ -1444,3 +1444,26 @@ def test_only_names_skips_ruff_scan_subprocess(tmp_path):
     invocations = [call.args[0] for call in mock_run.call_args_list]
     assert not any("format" in cmd for cmd in invocations)
     assert not any("E402,F821,F822" in cmd for cmd in invocations)
+
+
+def test_insert_chosen_import_inserts_given_statement(tmp_path):
+    """insert_chosen_import bypasses the finder and writes the supplied line directly."""
+    target = tmp_path / "module.py"
+    target.write_text("os.getcwd()\n")
+
+    insert_chosen_import(target, "import os")
+
+    text = target.read_text()
+    assert "import os" in text
+    assert text.endswith("os.getcwd()\n")
+
+
+def test_insert_chosen_import_does_not_invoke_finder(tmp_path):
+    """The chosen statement is inserted verbatim — no PackageFinder traffic."""
+    target = tmp_path / "module.py"
+    target.write_text("Book()\n")
+
+    # Pick an import string the finder would never have produced for `Book`.
+    insert_chosen_import(target, "from my_app.legacy.models import Book")
+
+    assert "from my_app.legacy.models import Book" in target.read_text()

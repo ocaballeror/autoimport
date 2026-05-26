@@ -121,6 +121,33 @@ def fix_files(
         restore_compound_fmt_skip(expanded, stashed)
 
 
+def insert_chosen_import(file: Path, import_statement: str) -> None:
+    """Insert a specific import line into ``file`` and let ruff isort sort it.
+
+    This skips the finder entirely — used by the pylsp plugin when the user
+    has already picked one of the candidates surfaced by
+    :meth:`PackageFinder.find_candidates`.
+    """
+    stashed = stash_compound_fmt_skip([file])
+    try:
+        insert_imports(file, [import_statement])
+        subprocess.run(
+            [
+                "ruff",
+                "check",
+                "--exit-zero",
+                "--silent",
+                "--select",
+                "I001",
+                "--fix",
+                str(file),
+            ],
+            check=False,
+        )
+    finally:
+        restore_compound_fmt_skip([file], stashed)
+
+
 def _fix_specific_names(
     expanded: list[Path],
     config: dict[str, Any] | None,
