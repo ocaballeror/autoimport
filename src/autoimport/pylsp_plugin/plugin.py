@@ -12,7 +12,7 @@ from pylsp import hookimpl
 
 from autoimport.config import load_config
 from autoimport.finder import PackageFinder
-from autoimport.fix import insert_chosen_import
+from autoimport.fix import insert_chosen_import_text
 
 logger = logging.getLogger(__name__)
 
@@ -208,18 +208,25 @@ def pylsp_execute_command(
     document = workspace.get_document(document_uri)
     source = document.source
 
-    tmp_path = _write_buffer_to_temp(source)
-    try:
-        insert_chosen_import(tmp_path, import_statement)
-        new_text = tmp_path.read_text(encoding="utf-8")
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    new_text = insert_chosen_import_text(source, import_statement)
 
     if new_text == source:
         return None
 
+    # Emit a versioned documentChanges edit so the editor can reject the apply
+    # if the buffer has moved on since we read `source`. Falls back to
+    # ``version: null`` when the document didn't carry one (e.g. unsaved
+    # buffers in some clients) — LSP allows that and applies unconditionally.
     workspace_edit = {
-        "changes": {document_uri: [_minimal_text_edit(source, new_text)]}
+        "documentChanges": [
+            {
+                "textDocument": {
+                    "uri": document_uri,
+                    "version": getattr(document, "version", None),
+                },
+                "edits": [_minimal_text_edit(source, new_text)],
+            }
+        ]
     }
 
     workspace.apply_edit(workspace_edit)

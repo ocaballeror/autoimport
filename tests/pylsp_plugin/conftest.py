@@ -34,4 +34,8 @@ def config(workspace):
 def make_document(workspace: Workspace, name: str, source: str) -> Document:
     path = Path(workspace.root_path) / name
     path.write_text(source, encoding="utf-8")
-    return Document(uris.from_fs_path(str(path)), workspace, source=source)
+    document = Document(uris.from_fs_path(str(path)), workspace, source=source)
+    # Register with the workspace so workspace.get_document(uri) returns
+    # *this* instance (with whatever version/source the test set).
+    workspace._docs[document.uri] = document
+    return document

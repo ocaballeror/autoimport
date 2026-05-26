@@ -33,9 +33,8 @@ def _find_header_end(lines: list[str]) -> int:
     return i
 
 
-def insert_imports(file: Path, imports: list[str]) -> None:
-    """Insert import statements after the file header (shebang, comments, docstring)."""
-    source = file.read_text()
+def insert_imports_in_text(source: str, imports: list[str]) -> str:
+    """Return ``source`` with ``imports`` inserted after the file header."""
     lines = source.splitlines(keepends=True)
     i = _find_header_end(lines)
 
@@ -48,8 +47,12 @@ def insert_imports(file: Path, imports: list[str]) -> None:
         if trailing_newlines < 2:
             import_block = "\n" * (2 - trailing_newlines) + import_block
 
-    source = before + import_block + rest
-    file.write_text(source)
+    return before + import_block + rest
+
+
+def insert_imports(file: Path, imports: list[str]) -> None:
+    """Insert import statements after the file header (shebang, comments, docstring)."""
+    file.write_text(insert_imports_in_text(file.read_text(), imports))
 
 
 def delete_lines(path: Path, line_numbers: set[int]) -> list[str]:

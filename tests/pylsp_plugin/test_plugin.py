@@ -20,6 +20,7 @@ def _undefined_name_diagnostic(name: str = "os") -> dict:
 
 def _patch_candidates(mapping):
     """Stub PackageFinder so code_actions doesn't touch the real filesystem."""
+
     def side_effect(name, _file):
         return mapping.get(name, [])
 
@@ -151,9 +152,7 @@ def test_per_name_grouping_with_mixed_candidate_counts(config, workspace):
         )
 
     inserts = sorted(action["command"]["arguments"][1] for action in actions)
-    assert inserts == sorted(
-        ["import os", "from a.b import Book", "from c.d import Book"]
-    )
+    assert inserts == sorted(["import os", "from a.b import Book", "from c.d import Book"])
 
 
 def test_pylsp_commands_exposes_command(config, workspace):
@@ -171,15 +170,17 @@ def _apply_edit(source: str, edit: dict) -> str:
 def test_execute_command_applies_chosen_import(config, workspace):
     source = "os.getcwd()\n"
     document = make_document(workspace, "a.py", source)
+    document.version = 7
     fixed = "import os\n\nos.getcwd()\n"
 
     captured = {}
 
-    def fake_insert(path, import_statement):
+    def fake_insert(src, import_statement):
         captured["statement"] = import_statement
-        path.write_text(fixed, encoding="utf-8")
+        captured["source"] = src
+        return fixed
 
-    with patch.object(plugin, "insert_chosen_import", side_effect=fake_insert):
+    with patch.object(plugin, "insert_chosen_import_text", side_effect=fake_insert):
         plugin.pylsp_execute_command(
             config=config,
             workspace=workspace,
@@ -188,13 +189,40 @@ def test_execute_command_applies_chosen_import(config, workspace):
         )
 
     assert captured["statement"] == "import os"
+    assert captured["source"] == source
     workspace._endpoint.request.assert_called_once()
     method, payload = workspace._endpoint.request.call_args[0]
     assert method == "workspace/applyEdit"
-    edits = payload["edit"]["changes"][document.uri]
+
+    doc_changes = payload["edit"]["documentChanges"]
+    assert len(doc_changes) == 1
+    change = doc_changes[0]
+    assert change["textDocument"]["uri"] == document.uri
+    assert change["textDocument"]["version"] == 7
+
+    edits = change["edits"]
     # The edit must be minimal (no whole-document replace) but produce the fixed source.
     assert _apply_edit(source, edits[0]) == fixed
     assert "os.getcwd()" not in edits[0]["newText"]
+
+
+def test_execute_command_sends_null_version_when_document_has_none(config, workspace):
+    """LSP allows `version: null` for unversioned buffers; we must not break."""
+    source = "os.getcwd()\n"
+    document = make_document(workspace, "a.py", source)
+    document.version = None
+    fixed = "import os\n\nos.getcwd()\n"
+
+    with patch.object(plugin, "insert_chosen_import_text", return_value=fixed):
+        plugin.pylsp_execute_command(
+            config=config,
+            workspace=workspace,
+            command=plugin.COMMAND_FIX_IMPORTS,
+            arguments=[document.uri, "import os"],
+        )
+
+    _, payload = workspace._endpoint.request.call_args[0]
+    assert payload["edit"]["documentChanges"][0]["textDocument"]["version"] is None
 
 
 def test_minimal_edit_only_touches_changed_lines():
@@ -219,7 +247,7 @@ def test_minimal_edit_handles_no_change():
 def test_execute_command_without_import_statement_is_noop(config, workspace):
     document = make_document(workspace, "a.py", "os.getcwd()\n")
 
-    with patch.object(plugin, "insert_chosen_import") as mock_insert:
+    with patch.object(plugin, "insert_chosen_import_text") as mock_insert:
         plugin.pylsp_execute_command(
             config=config,
             workspace=workspace,
@@ -235,10 +263,7 @@ def test_execute_command_no_change_skips_edit(config, workspace):
     source = "import os\n\nos.getcwd()\n"
     document = make_document(workspace, "a.py", source)
 
-    def noop_insert(path, _import_statement):
-        return None
-
-    with patch.object(plugin, "insert_chosen_import", side_effect=noop_insert):
+    with patch.object(plugin, "insert_chosen_import_text", return_value=source):
         plugin.pylsp_execute_command(
             config=config,
             workspace=workspace,

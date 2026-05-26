@@ -10,7 +10,7 @@ import pytest
 
 from autoimport.constants import common_statements
 from autoimport.files import restore_compound_fmt_skip
-from autoimport.fix import fix_files, insert_chosen_import
+from autoimport.fix import fix_files, insert_chosen_import, insert_chosen_import_text
 
 
 def fix_code(source: str, config: dict | None = None):
@@ -1394,3 +1394,51 @@ def test_insert_chosen_import_does_not_invoke_finder(tmp_path):
     insert_chosen_import(target, "from my_app.legacy.models import Book")
 
     assert "from my_app.legacy.models import Book" in target.read_text()
+
+
+def test_insert_chosen_import_text_returns_inserted_source():
+    """The in-memory variant returns the new source instead of writing a file."""
+    result = insert_chosen_import_text("os.getcwd()\n", "import os")
+
+    assert result.startswith("import os")
+    assert result.endswith("os.getcwd()\n")
+
+
+def test_insert_chosen_import_text_lets_ruff_sort_into_existing_block():
+    """A new import should be slotted into the right place by ruff's I001."""
+    source = dedent(
+        """\
+        import json
+
+        json.dumps({})
+        os.getcwd()
+        """
+    )
+
+    result = insert_chosen_import_text(source, "import os")
+
+    # ruff I001 sorts imports alphabetically inside a block.
+    json_pos = result.index("import json")
+    os_pos = result.index("import os")
+    assert json_pos < os_pos
+
+
+def test_insert_chosen_import_text_falls_back_on_ruff_failure():
+    """If ruff returns no stdout, the pre-sort insertion is returned as-is."""
+    with patch("autoimport.fix.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout="", returncode=2)
+        result = insert_chosen_import_text("os.getcwd()\n", "import os")
+
+    assert "import os" in result
+    assert "os.getcwd()" in result
+
+
+def test_insert_chosen_import_text_falls_back_on_ruff_timeout():
+    """A hung ruff must not deadlock the caller; pre-sort source is returned."""
+    import subprocess as sp
+
+    with patch("autoimport.fix.subprocess.run", side_effect=sp.TimeoutExpired("ruff", 1)):
+        result = insert_chosen_import_text("os.getcwd()\n", "import os")
+
+    assert "import os" in result
+    assert "os.getcwd()" in result

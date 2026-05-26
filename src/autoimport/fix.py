@@ -12,10 +12,13 @@ from typing import Any
 from autoimport.files import (
     delete_lines,
     insert_imports,
+    insert_imports_in_text,
     restore_compound_fmt_skip,
     stash_compound_fmt_skip,
 )
 from autoimport.finder import PackageFinder
+
+_RUFF_TIMEOUT_SECONDS = 10
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +134,42 @@ def insert_chosen_import(file: Path, import_statement: str) -> None:
                 str(file),
             ],
             check=False,
+            timeout=_RUFF_TIMEOUT_SECONDS,
         )
     finally:
         restore_compound_fmt_skip([file], stashed)
+
+
+def insert_chosen_import_text(source: str, import_statement: str) -> str:
+    """In-memory variant of :func:`insert_chosen_import`.
+
+    The import is inserted into ``source`` in memory and the result is piped
+    through ``ruff check --select I001 --fix`` over stdin/stdout, so neither
+    autoimport nor ruff need to touch the filesystem. Used by the pylsp plugin
+    to keep the LSP request thread off the disk hot path.
+    """
+    new_source = insert_imports_in_text(source, [import_statement])
+    try:
+        result = subprocess.run(
+            [
+                "ruff",
+                "check",
+                "--exit-zero",
+                "--silent",
+                "--select",
+                "I001",
+                "--fix",
+                "--stdin-filename",
+                "buffer.py",
+                "-",
+            ],
+            input=new_source,
+            capture_output=True,
+            text=True,
+            timeout=_RUFF_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        log.warning("ruff timed out while sorting imports; returning unsorted output")
+        return new_source
+
+    return result.stdout if result.stdout else new_source

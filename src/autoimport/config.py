@@ -40,6 +40,4 @@ def load_config(
     if not sources:
         return {}
 
-    return UserConfig(
-        package_name="autoimport", source_files=sources, merge_configs=True
-    ).values
+    return UserConfig(package_name="autoimport", source_files=sources, merge_configs=True).values

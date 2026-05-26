@@ -98,7 +98,7 @@ class PackageFinder:
         for name in names:
             try:
                 spec = importlib.util.find_spec(name)
-            except (ImportError, ValueError):
+            except ImportError, ValueError:
                 spec = None
             if spec is not None:
                 origin = Path(spec.origin) if spec.origin else _STDLIB_NO_SOURCE
@@ -285,7 +285,7 @@ class PackageFinder:
     def _find_package_in_modules(name: str) -> str | None:
         try:
             package_specs = importlib.util.find_spec(name)
-        except (ImportError, ValueError):
+        except ImportError, ValueError:
             return None
         if package_specs is None:
             return None
