@@ -42,7 +42,7 @@ def test_fix_doesnt_change_source_if_package_doesnt_exist():
     source = "foo"
 
     result = fix_code(source)
-    assert result == source + "\n"
+    assert result == source
 
 
 def test_fix_imports_packages_below_docstring():
@@ -335,31 +335,10 @@ def test_fix_respects_import_lines_in_multiple_line_strings():
             getcwd()\"\"\"
         )"""
     )
-    fixed_source = dedent(
-        """\
-        from textwrap import dedent
-
-        source = dedent(
-            \"\"\"\\
-            from re import match
-
-            match(r'a', 'a')\"\"\"
-        )
-
-        source = dedent(
-            \"\"\"\\
-            from os import (
-                getcwd,
-            )
-
-            getcwd()\"\"\"
-        )
-        """
-    )
 
     result = fix_code(source)
 
-    assert result == fixed_source
+    assert result == source
 
 
 def test_fix_moves_import_statements_to_the_top():
@@ -376,7 +355,6 @@ def test_fix_moves_import_statements_to_the_top():
         import os
 
         a = 3
-
 
         os.getcwd()
         """
@@ -435,7 +413,6 @@ def test_fix_moves_from_import_statements_to_the_top():
 
         a = 3
 
-
         getcwd()
         """
     )
@@ -471,7 +448,6 @@ def test_fix_moves_multiline_import_statements_to_the_top():
 
         getcwd()
 
-
         match(r"a", "a")
         """
     )
@@ -497,27 +473,9 @@ def test_fix_doesnt_break_objects_with_import_in_their_names():
         import_string = 'a'"""
     )
 
-    fixed_source = dedent(
-        """\
-        def import_code():
-            pass
-
-
-        def code_import():
-            pass
-
-
-        def import_():
-            pass
-
-
-        import_string = "a"
-        """
-    )
-
     result = fix_code(source)
 
-    assert result == fixed_source
+    assert result == source
 
 
 def test_fix_respects_fmt_skip_lines():
@@ -529,17 +487,10 @@ def test_fix_respects_fmt_skip_lines():
             return 'dunno'
         """
     )
-    fixed_source = dedent(
-        """\
-        def why():
-            import pdb;pdb.set_trace()  # fmt: skip
-            return "dunno"
-        """
-    )
 
     result = fix_code(source)
 
-    assert result == fixed_source
+    assert result == source
 
 
 def test_fix_respects_strings_with_import_statements():
@@ -1209,7 +1160,7 @@ def test_import_module_with_dot():
 
     result = fix_code(source)
 
-    assert result == ""
+    assert result == "\n"
 
 
 def test_respect_new_lines_between_imports_and_code():

@@ -22,6 +22,14 @@ _RUFF_TIMEOUT_SECONDS = 10
 
 log = logging.getLogger(__name__)
 
+# Matches lines like `import x; y()` or `from a.b import c; d()`. Lines marked
+# `# fmt: skip` have already been replaced with `pass` placeholders by
+# stash_compound_fmt_skip, so they won't match here.
+_COMPOUND_IMPORT_RE = re.compile(
+    r"^\s*(?:import\s+\w+|from\s+[\w.]+\s+import\s+\w+)\s*;",
+    re.MULTILINE,
+)
+
 
 def _expand_paths(paths: Sequence[Path]) -> list[Path]:
     result = []
@@ -31,6 +39,13 @@ def _expand_paths(paths: Sequence[Path]) -> list[Path]:
         else:
             result.append(path)
     return result
+
+
+def _has_compound_import(path: Path) -> bool:
+    try:
+        return bool(_COMPOUND_IMPORT_RE.search(path.read_text()))
+    except OSError:
+        return False
 
 
 def fix_files(
@@ -43,13 +58,20 @@ def fix_files(
 
     stashed = stash_compound_fmt_skip(expanded)
     try:
-        subprocess.run(["ruff", "format", "--silent", *fnames], check=False)
+        # ruff format splits compound `import X; Y()` statements onto separate
+        # lines. The E402 path below deletes whole lines by number, so the
+        # import has to be on its own line first — but only files that actually
+        # contain a compound import need this pre-pass.
+        preformat = [str(p) for p in expanded if _has_compound_import(p)]
+        if preformat:
+            subprocess.run(["ruff", "format", "--silent", *preformat], check=False)
+
         result = subprocess.run(
             [
                 "ruff",
                 "check",
                 "--select",
-                "E402,F821,F822",
+                "E402,F821,F822,F401,I001",
                 "--output-format",
                 "json",
                 *fnames,
@@ -69,12 +91,16 @@ def fix_files(
         packages_missing: set[str] = set()
         files_missing: dict[Path, set[str]] = defaultdict(set)
         lines_to_delete: dict[Path, set[int]] = defaultdict(set)
+        files_needing_ruff_fix: set[Path] = set()
         for msg in messages:
+            fname = Path(msg["filename"])
+            code = msg["code"]
+            if code in ("F401", "I001"):
+                files_needing_ruff_fix.add(fname)
+                continue
             if msg["fix"] is not None:
                 continue
-
-            fname = Path(msg["filename"])
-            if msg["code"] in ("F821", "F822"):
+            if code in ("F821", "F822"):
                 match = re.search(r"`([^`]+)`", msg["message"])
                 if not match:
                     continue
@@ -82,7 +108,7 @@ def fix_files(
                 name = match.group(1)
                 packages_missing.add(name)
                 files_missing[fname].add(name)
-            elif msg["code"] == "E402":
+            elif code == "E402":
                 for lineno in range(msg["location"]["row"], msg["end_location"]["row"] + 1):
                     lines_to_delete[fname].add(lineno)
 
@@ -100,14 +126,29 @@ def fix_files(
                 if import_stmt:
                     imports_to_add[fname].append(import_stmt)
 
+        modified: set[Path] = set(lines_to_delete)
         for fname, add_imports in imports_to_add.items():
-            insert_imports(fname, add_imports)
+            if add_imports:
+                insert_imports(fname, add_imports)
+                modified.add(fname)
 
-        subprocess.run(
-            ["ruff", "check", "--exit-zero", "--silent", "--select", "I001,F401", "--fix", *fnames],
-            check=False,
-        )
-        subprocess.run(["ruff", "format", "--silent", *fnames], check=False)
+        files_to_fix = modified | files_needing_ruff_fix
+        if files_to_fix:
+            fix_args = [str(p) for p in sorted(files_to_fix)]
+            subprocess.run(
+                [
+                    "ruff",
+                    "check",
+                    "--exit-zero",
+                    "--silent",
+                    "--select",
+                    "I001,F401",
+                    "--fix",
+                    *fix_args,
+                ],
+                check=False,
+            )
+            subprocess.run(["ruff", "format", "--silent", *fix_args], check=False)
     finally:
         restore_compound_fmt_skip(expanded, stashed)
 
