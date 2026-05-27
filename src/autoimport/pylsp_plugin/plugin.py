@@ -210,7 +210,7 @@ def _fix_all_in_text(source: str, workspace_root: str | None) -> str:
     """
     tmp = _write_buffer_to_temp(source)
     try:
-        fix_files([tmp], _get_config(workspace_root))
+        fix_files([tmp], _get_config(workspace_root), skip_ambiguous=True)
         return tmp.read_text(encoding="utf-8")
     finally:
         tmp.unlink(missing_ok=True)

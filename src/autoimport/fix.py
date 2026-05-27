@@ -51,8 +51,15 @@ def _has_compound_import(path: Path) -> bool:
 def fix_files(
     files: Sequence[Path],
     config: dict[str, Any] | None = None,
+    skip_ambiguous: bool = False,
 ) -> None:
-    """Fix imports in ``files``."""
+    """Fix imports in ``files``.
+
+    When ``skip_ambiguous`` is true, names that resolve to more than one
+    project-level candidate are left untouched instead of being picked by the
+    ``statistics.mode`` tiebreaker. Used by the pylsp "fix all" code action so
+    it never silently inserts an import the user didn't explicitly choose.
+    """
     fnames = list(map(str, files))
     expanded = _expand_paths(files)
 
@@ -122,6 +129,11 @@ def fix_files(
 
         for fname, names in files_missing.items():
             for pkg in names:
+                if skip_ambiguous:
+                    candidates = finder.find_candidates(pkg, fname)
+                    if len(candidates) == 1:
+                        imports_to_add[fname].append(candidates[0])
+                    continue
                 import_stmt = finder.find_package(pkg, fname)
                 if import_stmt:
                     imports_to_add[fname].append(import_stmt)

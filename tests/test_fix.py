@@ -1393,3 +1393,47 @@ def test_insert_chosen_import_text_falls_back_on_ruff_timeout():
 
     assert "import os" in result
     assert "os.getcwd()" in result
+
+
+def test_skip_ambiguous_omits_names_with_multiple_candidates(tmp_path):
+    """``skip_ambiguous=True`` must skip names that have several candidates.
+
+    Common-statement names (here: ``os``) still get added because they're
+    unambiguous by definition.
+    """
+    target = tmp_path / "a.py"
+    target.write_text("os.getcwd(); Book()\n")
+
+    def fake_find_candidates(self, name, file):
+        if name == "Book":
+            return ["from a.b import Book", "from c.d import Book"]
+        if name == "os":
+            return ["import os"]
+        return []
+
+    with patch("autoimport.fix.PackageFinder.find_candidates", new=fake_find_candidates):
+        with patch("autoimport.fix.PackageFinder.index_packages"):
+            fix_files([target], skip_ambiguous=True)
+
+    result = target.read_text()
+    assert "import os" in result
+    assert "Book" not in result.splitlines()[0]  # no import line for Book
+
+
+def test_skip_ambiguous_false_still_picks_via_mode(tmp_path):
+    """Without the flag, ambiguous names go through ``find_package`` as before."""
+    target = tmp_path / "a.py"
+    target.write_text("Book()\n")
+
+    called = {"find_package": 0}
+
+    def fake_find_package(self, name, file):
+        called["find_package"] += 1
+        return "from a.b import Book"
+
+    with patch("autoimport.fix.PackageFinder.find_package", new=fake_find_package):
+        with patch("autoimport.fix.PackageFinder.index_packages"):
+            fix_files([target])
+
+    assert called["find_package"] >= 1
+    assert "from a.b import Book" in target.read_text()
