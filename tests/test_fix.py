@@ -493,6 +493,53 @@ def test_fix_respects_fmt_skip_lines():
     assert result == source
 
 
+def test_fix_respects_fmt_skip_lines_for_lazy_import(tmp_path):
+    """PEP 810 `lazy import` compound statements marked `# fmt: skip` are untouched."""
+    (tmp_path / "pyproject.toml").write_text('[tool.ruff]\ntarget-version = "py315"\n')
+    source = dedent(
+        """\
+        def why():
+            lazy import pdb;pdb.set_trace()  # fmt: skip
+            return 'dunno'
+        """
+    )
+    test_file = tmp_path / "tmp.py"
+    test_file.write_text(source)
+
+    fix_files([test_file])
+
+    assert test_file.read_text() == source
+
+
+def test_fix_splits_compound_lazy_import_without_losing_trailing_statement(tmp_path):
+    """A compound `lazy import x; y()` line is split instead of deleted whole."""
+    (tmp_path / "pyproject.toml").write_text('[tool.ruff]\ntarget-version = "py315"\n')
+    source = dedent(
+        """\
+        \"\"\"doc\"\"\"
+        x = 1
+        lazy import os; print(os)
+        """
+    )
+    fixed_source = dedent(
+        """\
+        \"\"\"doc\"\"\"
+
+        lazy import os
+
+        x = 1
+
+        print(os)
+        """
+    )
+    test_file = tmp_path / "tmp.py"
+    test_file.write_text(source)
+
+    fix_files([test_file])
+
+    assert test_file.read_text() == fixed_source
+
+
 def test_fix_respects_strings_with_import_statements():
     """
     Given: Code with a string that has import statements structure.

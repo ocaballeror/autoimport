@@ -22,11 +22,12 @@ _RUFF_TIMEOUT_SECONDS = 10
 
 log = logging.getLogger(__name__)
 
-# Matches lines like `import x; y()` or `from a.b import c; d()`. Lines marked
-# `# fmt: skip` have already been replaced with `pass` placeholders by
-# stash_compound_fmt_skip, so they won't match here.
+# Matches lines like `import x; y()` or `from a.b import c; d()`, including
+# their PEP 810 `lazy import x; y()` / `lazy from a.b import c; d()` variants.
+# Lines marked `# fmt: skip` have already been replaced with `pass`
+# placeholders by stash_compound_fmt_skip, so they won't match here.
 _COMPOUND_IMPORT_RE = re.compile(
-    r"^\s*(?:import\s+\w+|from\s+[\w.]+\s+import\s+\w+)\s*;",
+    r"^\s*(?:lazy\s+)?(?:import\s+\w+|from\s+[\w.]+\s+import\s+\w+)\s*;",
     re.MULTILINE,
 )
 

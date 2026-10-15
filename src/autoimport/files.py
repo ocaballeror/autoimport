@@ -72,7 +72,7 @@ def delete_lines(path: Path, line_numbers: set[int]) -> list[str]:
 
 
 _COMPOUND_FMT_SKIP = re.compile(
-    r"^(\s*)(?:import\s+\w+|from\s+[\w.]+\s+import\s+\w+)\s*;.*#\s*fmt:\s*skip\s*$"
+    r"^(\s*)(?:lazy\s+)?(?:import\s+\w+|from\s+[\w.]+\s+import\s+\w+)\s*;.*#\s*fmt:\s*skip\s*$"
 )
 _PLACEHOLDER_RE = re.compile(r"^\s*pass  # _autoimport_save_(\d+)\s*$")
 
