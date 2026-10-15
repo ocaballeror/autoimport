@@ -170,3 +170,24 @@ def test_parse_module_definitions_skips_too_deep_relative_import(tmp_path):
     _, reexports = parse_module_definitions(init, "package")
 
     assert "foo" not in reexports
+
+
+def test_parse_module_definitions_includes_lazy_imports(tmp_path):
+    """
+    Given: A module using PEP 810 `lazy import` / `lazy from ... import ...`.
+    When: parse_module_definitions is called.
+    Then: Lazily imported names are captured the same as eager ones.
+    """
+    mod = tmp_path / "mod.py"
+    mod.write_text(
+        "lazy import os\n"
+        "lazy from collections import OrderedDict\n"
+        "\n"
+        "class Foo:\n"
+        "    pass\n"
+    )
+
+    names, reexports = parse_module_definitions(mod, "mod")
+
+    assert names == {"Foo"}
+    assert reexports == {"OrderedDict": "collections"}
